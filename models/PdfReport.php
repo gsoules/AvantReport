@@ -66,23 +66,30 @@ class PdfReport
         $privateElementsData = CommonConfig::getOptionDataForPrivateElements();
 
         $previousName = '';
+        $skipPrivateElements = empty(current_user());
         foreach ($elementTexts as $elementText)
         {
             $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
+            $isPrivateElement = in_array($name,$privateElementsData);
+
+            if ($isPrivateElement && $skipPrivateElements)
+                continue;
+
             if ($name == $previousName)
             {
                 $name = '';
-                $style = '';
             }
             else
             {
-                $style = in_array($name,$privateElementsData) ? 'I' : '';
                 $previousName = $name;
                 $name .= ':';
             }
 
-            $pdf->SetFont('', $style );
-            $pdf->SetTextColor(80, 80, 80);
+            if ($isPrivateElement)
+            {
+                $pdf->SetFont('', 'I');
+                $pdf->SetTextColor(100, 100, 100);
+            }
             $pdf->Cell(1, 0.2, $name, 0, 0, 'R');
 
             $pdf->SetFont('', '');
