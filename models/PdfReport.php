@@ -1,12 +1,22 @@
 <?php
 
+class PDF extends FPDF
+{
+    function Footer()
+    {
+        $this->SetY(-0.5);
+        $this->SetFont('Arial', '', 9);
+        $this->Cell(0, 0.2,'Page '.$this->PageNo(),0,0,'C');
+    }
+}
+
 class PdfReport
 {
     public function createReportForItem($item)
     {
-        $pdf = new FPDF('P', 'in', 'letter');
+        $pdf = new PDF('P', 'in', 'letter');
 
-        $pdf->SetTopMargin(0.75);
+        $pdf->SetTopMargin(1.0);
         $pdf->SetLeftMargin(0.75);
         $pdf->SetRightMargin(0.75);
 
@@ -55,9 +65,15 @@ class PdfReport
             $pdf->SetTextColor(80, 80, 80);
             $pdf->Cell(1, 0.2, $name, 0, 0, 'R');
             $pdf->SetTextColor(0, 0, 0);
-            $pdf->MultiCell(6, 0.18, self::decode($text));
+            $pdf->MultiCell(5.75, 0.18, self::decode($text));
             $pdf->Ln(0.08);
         }
+
+        $url = WEB_ROOT . '/items/show/' . $item->id;
+        $pdf->Cell(1, 0.2, '');
+        $pdf->AddLink();
+        $pdf->SetFont('','U');
+        $pdf->Cell(1, 0.2, $url);
 
         $pdf->Output('test1.pdf', 'D');
     }
