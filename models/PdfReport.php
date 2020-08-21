@@ -4,9 +4,11 @@ class PDF extends FPDF
 {
     function Footer()
     {
+        $this->SetTextColor(80, 80, 80);
         $this->SetY(-0.5);
         $this->SetFont('Arial', '', 9);
-        $this->Cell(0, 0.2,'Page '.$this->PageNo(),0,0,'C');
+        $this->Cell(0, 0, date('n/j/Y'));
+        $this->Cell(0, 0, 'Page '.$this->PageNo() . ' of {nb}', 0, 0, 'R');
     }
 }
 
@@ -15,6 +17,7 @@ class PdfReport
     public function createReportForItem($item)
     {
         $pdf = new PDF('P', 'in', 'letter');
+        $pdf->AliasNbPages();
 
         $pdf->SetTopMargin(0.75);
         $pdf->SetLeftMargin(0.75);
@@ -23,22 +26,23 @@ class PdfReport
         $pdf->AddPage();
 
         $url = WEB_ROOT . '/items/show/' . $item->id;
-        $pdf->AddLink();
-        $pdf->SetFont('Arial','',11);
-        $pdf->Cell(0, 0.2, get_option('site_title'));
-        $pdf->Ln(0.3);
+        $pdf->SetFont('Arial','',10);
+        $pdf->SetTextColor(80, 80, 80);
+        $pdf->Cell(0, 0, get_option('site_title'));
         $pdf->SetFont('','U');
-        $pdf->Cell(0, 0.2, $url);
-        $pdf->Line(0.75, 1.5, 7, 1.5);
+        $pdf->AddLink();
+        $pdf->Cell(0, 0, $url, 0, 0, 'R');
+        $pdf->Line(0.8, 1.0, 7.70, 1.0);
 
         $pdf->Ln(0.2);
         $pdf->SetFont('Arial','',13);
         $title = ItemMetadata::getItemTitle($item);
-        $pdf->Ln(0.5);
+        $pdf->Ln(0.4);
         $pdf->Cell(0, 0, self::decode($title));
 
         $pdf->Ln(0.2);
         $pdf->SetFont('Arial','',10);
+        $pdf->SetTextColor(0, 0, 0);
 
         $itemFiles = $item->Files;
         if ($itemFiles)
