@@ -63,6 +63,7 @@ class PdfReport
         }
 
         $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
+        $privateElementsData = CommonConfig::getOptionDataForPrivateElements();
 
         $previousName = '';
         foreach ($elementTexts as $elementText)
@@ -71,17 +72,22 @@ class PdfReport
             if ($name == $previousName)
             {
                 $name = '';
+                $style = '';
             }
             else
             {
+                $style = in_array($name,$privateElementsData) ? 'I' : '';
                 $previousName = $name;
                 $name .= ':';
             }
-            $text = $elementText['text'];
+
+            $pdf->SetFont('', $style );
             $pdf->SetTextColor(80, 80, 80);
             $pdf->Cell(1, 0.2, $name, 0, 0, 'R');
+
+            $pdf->SetFont('', '');
             $pdf->SetTextColor(0, 0, 0);
-            $pdf->MultiCell(5.75, 0.18, self::decode($text));
+            $pdf->MultiCell(5.75, 0.18, self::decode($elementText['text']));
             $pdf->Ln(0.08);
         }
 
