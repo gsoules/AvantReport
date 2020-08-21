@@ -16,15 +16,27 @@ class PdfReport
     {
         $pdf = new PDF('P', 'in', 'letter');
 
-        $pdf->SetTopMargin(1.0);
+        $pdf->SetTopMargin(0.75);
         $pdf->SetLeftMargin(0.75);
         $pdf->SetRightMargin(0.75);
 
         $pdf->AddPage();
-        $pdf->SetFont('Arial','',13);
 
+        $url = WEB_ROOT . '/items/show/' . $item->id;
+        $pdf->AddLink();
+        $pdf->SetFont('Arial','',11);
+        $pdf->Cell(0, 0.2, get_option('site_title'));
+        $pdf->Ln(0.3);
+        $pdf->SetFont('','U');
+        $pdf->Cell(0, 0.2, $url);
+        $pdf->Line(0.75, 1.5, 7, 1.5);
+
+        $pdf->Ln(0.2);
+        $pdf->SetFont('Arial','',13);
         $title = ItemMetadata::getItemTitle($item);
+        $pdf->Ln(0.5);
         $pdf->Cell(0, 0, self::decode($title));
+
         $pdf->Ln(0.2);
         $pdf->SetFont('Arial','',10);
 
@@ -68,12 +80,6 @@ class PdfReport
             $pdf->MultiCell(5.75, 0.18, self::decode($text));
             $pdf->Ln(0.08);
         }
-
-        $url = WEB_ROOT . '/items/show/' . $item->id;
-        $pdf->Cell(1, 0.2, '');
-        $pdf->AddLink();
-        $pdf->SetFont('','U');
-        $pdf->Cell(1, 0.2, $url);
 
         $pdf->Output('test1.pdf', 'D');
     }
