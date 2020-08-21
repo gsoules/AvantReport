@@ -6,8 +6,6 @@ class PdfReport
     {
         $identifier = ItemMetadata::getItemIdentifier($item);
         $title = ItemMetadata::getItemTitle($item);
-        $text = "$identifier: $title";
-        $text = html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
 
         $imageFileName = '';
         $itemFiles = $item->Files;
@@ -17,17 +15,32 @@ class PdfReport
             $imageFileName = FILES_DIR . '/fullsize/' . $itemFiles[0]['filename'];
         }
 
-
         $pdf = new FPDF('P', 'in', 'letter');
         $pdf->AddPage();
-        $pdf->SetFont('Arial','',12);
+        $pdf->SetFont('Arial','',13);
+        $pdf->Cell(0, 0, self::decode($title));
+        $pdf->Ln(0.2);
         $pdf->Image($imageFileName);
-        $pdf->Cell(0,0, $text);
-        $pdf->Output('test7.pdf', 'D');
+        $pdf->Ln(0.4);
+        $pdf->SetFont('Arial','',10);
+        $pdf->Cell(1, 0, 'Identifier:', 0, 0, 'R');
+        $pdf->Cell(0, 0, self::decode($identifier));
+        $pdf->Ln(0.2);
+        $pdf->Cell(1, 0, 'Date:', 0, 0, 'R');
+        $pdf->Cell(0, 0, '2020-08-21');
+        $pdf->Ln(0.2);
+        $pdf->Cell(1, 0, 'Title:', 0, 0, 'R');
+        $pdf->Cell(0, 0, self::decode($title));
+        $pdf->Output('test1.pdf', 'D');
     }
 
     public function createReportForSearchResults()
     {
 
+    }
+
+    protected static function decode($text)
+    {
+        return html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
     }
 }
