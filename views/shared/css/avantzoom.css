@@ -1,0 +1,22 @@
+#openseadragon {
+    width: 98%;
+    height: 600px;
+    margin-bottom: 4px;
+    margin-left: 10px;
+    border: 1px;
+    border-style: dotted;
+    border-color: #e8e8e8;
+    background-color:#fff;
+    clear: both;
+}
+
+#zoom-toggle-link {
+    float: right;
+}
+
+#zoom-toggle {
+    font-size: 14px;
+    padding-left: 8px;
+    height: 16px;
+}
+
