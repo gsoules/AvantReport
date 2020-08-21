@@ -17,14 +17,19 @@ class PdfReport
     public function createReportForItem($item)
     {
         $pdf = new PDF('P', 'in', 'letter');
+
+        // Replace {nb} in the footer with the page number.
         $pdf->AliasNbPages();
 
+        // Set the margins.
         $pdf->SetTopMargin(0.75);
         $pdf->SetLeftMargin(0.75);
         $pdf->SetRightMargin(0.75);
 
+        // Add the first page. Other pages are added automatically.
         $pdf->AddPage();
 
+        // Emit the organization name and item URL at the top of the page, with a line under.
         $url = WEB_ROOT . '/items/show/' . $item->id;
         $pdf->SetFont('Arial','',10);
         $pdf->SetTextColor(80, 80, 80);
@@ -34,47 +39,56 @@ class PdfReport
         $pdf->Cell(0, 0, $url, 0, 0, 'R');
         $pdf->Line(0.8, 1.0, 7.70, 1.0);
 
+        // Emit the item title.
         $pdf->Ln(0.2);
         $pdf->SetFont('Arial','',13);
         $title = ItemMetadata::getItemTitle($item);
         $pdf->Ln(0.4);
         $pdf->Cell(0, 0, self::decode($title));
 
+        // Switch to the font that subsequent text fill use.
         $pdf->Ln(0.2);
         $pdf->SetFont('Arial','',10);
         $pdf->SetTextColor(0, 0, 0);
 
+        // Determine if the item has an attachment.
         $itemFiles = $item->Files;
         if ($itemFiles)
         {
-            // Remove the first file because it appears in the Primary section above the fields.
+            // The item has an attachment.
             $primaryImage = $itemFiles[0];
             $imageFileName = FILES_DIR . '/fullsize/' . $primaryImage['filename'];
             if ($primaryImage['mime_type'] == 'image/jpeg')
             {
+                // Emit the image.
                 $pdf->Image($imageFileName);
             }
             else
             {
+                // The attachment is not an image. Just emit its file name.
                 $pdf->Ln(0.2);
                 $pdf->Cell(1, 0, "Attachment: $imageFileName");
             }
             $pdf->Ln(0.2);
         }
 
+        // Get the item's elements.
         $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
         $privateElementsData = CommonConfig::getOptionDataForPrivateElements();
-
-        $previousName = '';
         $skipPrivateElements = empty(current_user());
+        $previousName = '';
+
+        // Loop over each element.
         foreach ($elementTexts as $elementText)
         {
             $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
             $isPrivateElement = in_array($name,$privateElementsData);
 
+            // Skip private elements if no user is logged in.
             if ($isPrivateElement && $skipPrivateElements)
                 continue;
 
+            // Put a colon after the element name. If the element has multiple values, only show the name on the first.
             if ($name == $previousName)
             {
                 $name = '';
@@ -85,20 +99,25 @@ class PdfReport
                 $name .= ':';
             }
 
+            // Show names of private elements in gray italics.
             if ($isPrivateElement)
             {
                 $pdf->SetFont('', 'I');
-                $pdf->SetTextColor(100, 100, 100);
+                $pdf->SetTextColor(120, 120, 120);
             }
+
+            // Emit the element name in the left column, right justified.
             $pdf->Cell(1, 0.2, $name, 0, 0, 'R');
 
+            // Emit the element value with normal black text, left justified. Long values will wrap in their multicell.
             $pdf->SetFont('', '');
             $pdf->SetTextColor(0, 0, 0);
             $pdf->MultiCell(5.75, 0.18, self::decode($elementText['text']));
             $pdf->Ln(0.08);
         }
 
-        $pdf->Output('test1.pdf', 'D');
+        // Prompt the user to save the file.
+        $pdf->Output(ItemMetadata::getItemIdentifier($item) . '.pdf', 'D');
     }
 
     public function createReportForSearchResults()
