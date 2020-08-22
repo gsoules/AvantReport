@@ -126,7 +126,7 @@ class PdfReport
         }
 
         // Prompt the user to save the file.
-        $pdf->Output(ItemMetadata::getItemIdentifier($item) . '.pdf', 'D');
+        $pdf->Output(__('item-') . ItemMetadata::getItemIdentifier($item) . '.pdf', 'D');
     }
 
     public function createReportForSearchResults()

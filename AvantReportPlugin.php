@@ -3,24 +3,21 @@
 class AvantReportPlugin extends Omeka_Plugin_AbstractPlugin
 {
     protected $_hooks = array(
-        'admin_head',
-        'public_head'
+        'public_head',
+        'public_items_show'
     );
 
     protected $_filters = array(
     );
 
-    public function hookAdminHead($args)
-    {
-        $this->head();
-    }
-
     public function hookPublicHead($args)
     {
-        $this->head();
+        queue_css_file('avantreport');
     }
 
-    protected function head()
+    public function hookPublicItemsShow($args)
     {
+        $linkName = __('Save this item as a PDF file');
+        echo "<p><a id='save-item-pdf-link' href='?report'>$linkName</a></p>";
     }
 }
