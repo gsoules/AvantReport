@@ -1,46 +1,13 @@
 <?php
 
-class PDF extends FPDF
-{
-    function Footer()
-    {
-        $this->SetTextColor(80, 80, 80);
-        $this->SetY(-0.5);
-        $this->SetFont('Arial', '', 9);
-        $this->Cell(0, 0, date('n/j/Y'));
-        $this->Cell(0, 0, 'Page '.$this->PageNo() . ' of {nb}', 0, 0, 'R');
-    }
-}
-
-class PdfReport
+class AvantReport
 {
     // For development/debugging, set the border to 1 so you can see individual cells.
     const BORDER = 0;
 
     public function createReportForItem($item)
     {
-        $pdf = new PDF('P', 'in', 'letter');
-
-        // Replace {nb} in the footer with the page number.
-        $pdf->AliasNbPages();
-
-        // Set the margins.
-        $pdf->SetTopMargin(0.75);
-        $pdf->SetLeftMargin(0.75);
-        $pdf->SetRightMargin(0.75);
-
-        // Add the first page. Other pages are added automatically.
-        $pdf->AddPage();
-
-        // Emit the organization name and item URL at the top of the page, with a line under.
-        $url = WEB_ROOT . '/items/show/' . $item->id;
-        $pdf->SetFont('Arial','',10);
-        $pdf->SetTextColor(80, 80, 80);
-        $pdf->Cell(0, 0.2, get_option('site_title') . ' ' . __('Digital Archive'), self::BORDER);
-        $pdf->SetFont('','U');
-        $pdf->AddLink();
-        $pdf->Cell(0, 0.2, $url, self::BORDER, 0, 'R');
-        $pdf->Line(0.8, 1.1, 7.70, 1.1);
+        $pdf = $this->initializeReport($item);
 
         // Emit the item title.
         $pdf->Ln(0.2);
@@ -131,11 +98,48 @@ class PdfReport
 
     public function createReportForSearchResults()
     {
+        $pdf = $this->initializeReport();
 
+        // Prompt the user to save the file.
+        $pdf->Output(__('search-') . '001' . '.pdf', 'D');
     }
 
     protected static function decode($text)
     {
         return html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
+    }
+
+    protected function initializeReport($item = null)
+    {
+        $pdf = new FPDFExtended('P', 'in', 'letter');
+
+        // Replace {nb} in the footer with the page number.
+        $pdf->AliasNbPages();
+
+        // Set the margins.
+        $pdf->SetTopMargin(0.75);
+        $pdf->SetLeftMargin(0.75);
+        $pdf->SetRightMargin(0.75);
+
+        // Add the first page. Other pages are added automatically.
+        $pdf->AddPage();
+
+        // Emit the organization name and item URL at the top of the page, with a line under.
+        $pdf->SetFont('Arial','',10);
+        $pdf->SetTextColor(80, 80, 80);
+        $pdf->Cell(0, 0.2, get_option('site_title') . ' ' . __('Digital Archive'), self::BORDER);
+
+        // Emit a link to the item.
+        if ($item)
+        {
+            $pdf->SetFont('','U');
+            $pdf->AddLink();
+            $url = WEB_ROOT . '/items/show/' . $item->id;
+            $pdf->Cell(0, 0.2, $url, self::BORDER, 0, 'R');
+        }
+
+        $pdf->Line(0.8, 1.1, 7.70, 1.1);
+
+        return $pdf;
     }
 }
