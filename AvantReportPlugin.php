@@ -25,6 +25,7 @@ class AvantReportPlugin extends Omeka_Plugin_AbstractPlugin
     public function hookPublicSearchResults($args)
     {
         $linkName = __('Save these search results as a PDF file');
-        echo "<p><a id='save-search-results-pdf-link' href='?report'>$linkName</a></p>";
+        $url = $args['url'] . '&report=' . AvantSearch::MAX_SEARCH_RESULTS;
+        echo "<p><a id='save-search-results-pdf-link' href='$url'>$linkName</a></p>";
     }
 }
