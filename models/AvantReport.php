@@ -94,7 +94,8 @@ class AvantReport
     /* @var $searchResults SearchResultsTableView */
     public function createReportForSearchResults($searchResults, $findUrl)
     {
-        $pdf = $this->initializeReport('L');
+        $layoutId = $searchResults->getSelectedLayoutId();
+        $pdf = $this->initializeReport($layoutId == 1 ? 'P' : 'L');
 
         // Emit the search filters and selector bar options.
         $pdf->SetFont('Arial','B',10);
@@ -121,7 +122,8 @@ class AvantReport
 
     protected static function decode($text)
     {
-        return html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
+        return iconv('UTF-8', 'windows-1252', $text);
     }
 
     protected function downloadReport($pdf, $name)
@@ -143,12 +145,78 @@ class AvantReport
 
     protected function emitRowsForDetailLayout($pdf, $results, $useElasticsearch)
     {
+        $firstItemOnPage = true;
+
         foreach ($results as $result)
         {
-            $identifier = $result['_source']['core-fields']['identifier'][0];
-            $title = $result['_source']['core-fields']['title'][0];
-            $pdf->Cell(0, 0.18, "$identifier - $title", self::BORDER, 0, '');
+            $y = $pdf->GetY();
+            if ($y > 8.5)
+            {
+                $pdf->AddPage();
+                $firstItemOnPage = true;
+            }
+
+            if (!$firstItemOnPage)
+            {
+                $pdf->Ln(0.1);
+            }
+
+            if ($useElasticsearch)
+            {
+                $source = $result['_source'];
+                $itemId = $source['item']['id'];
+                $item = ItemMetadata::getItemFromId($itemId);
+                $identifier = $source['core-fields']['identifier'][0];
+                $title = $source['core-fields']['title'][0];
+            }
+            else
+            {
+                $item = $result;
+                $itemId = $item->id;
+                $identifier = ItemMetadata::getItemIdentifier($item);
+                $title = ItemMetadata::getItemTitle($item);
+            }
+
+            $title = self::decode($title);
+            $pdf->SetFont('Arial', '', 9);
+            $pdf->Cell(0, 0.18, "$title", self::BORDER, 0, '');
             $pdf->Ln(0.2);
+
+            $imageTop = $pdf->GetY();
+            $itemFiles = $item->Files;
+            if (!$itemFiles)
+            {
+                $coverImageIdentifier = ItemPreview::getCoverImageIdentifier($itemId);
+                $coverImageItem = empty($coverImageIdentifier) ? null : ItemMetadata::getItemFromIdentifier($coverImageIdentifier);
+                $itemFiles = $coverImageItem->Files;
+            }
+
+            if ($itemFiles)
+            {
+                // The item has an attachment.
+                foreach ($itemFiles as $itemFile)
+                {
+                    if ($itemFile['mime_type'] == 'image/jpeg')
+                    {
+                        // Emit the image.
+                        $imageFileName = FILES_DIR . '/thumbnails/' . $itemFile['filename'];
+                        $pdf->Image($imageFileName, null, null, null, 1.0);
+                        $imageBottom = $pdf->GetY();
+                        $pdf->SetY($imageTop);
+                        break;
+                    }
+                }
+            }
+
+            $pdf->SetX(3.0);
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->Cell(0, 0.18, "$identifier", self::BORDER, 0, '');
+            $pdf->Ln(0.15);
+
+            if ($pdf->GetY() < $imageBottom)
+                $pdf->SetY($imageBottom);
+
+            $firstItemOnPage = false;
         }
     }
 
