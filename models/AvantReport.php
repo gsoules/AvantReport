@@ -97,24 +97,7 @@ class AvantReport
 
         // Prompt the user to save the file.
         $fileName = __('item-') . ItemMetadata::getItemIdentifier($item) . '.pdf';
-    //    $pdf->Output($fileName, 'F');
-
-//        $fileName = "http://localhost/omeka/item-8070.pdf";
-//        $basename = basename($fileName);
-
-        if (file_exists($fileName))
-        {
-//            header('Content-Description: File Transfer');
-            header('Content-Type: application/pdf');
-            header("Content-Transfer-Encoding: Binary");
-            header('Content-Disposition: attachment; filename="'.basename($fileName).'"');
-//            header('Expires: 0');
-//            header('Cache-Control: must-revalidate');
-//            header('Pragma: public');
-//            header('Content-Length: ' . filesize($fileName));
-            readfile($fileName);
-            exit();
-        }
+        $pdf->Output($fileName, 'D');
     }
 
     /* @var $searchResults SearchResultsTableView */
@@ -179,7 +162,8 @@ class AvantReport
         }
 
         // Prompt the user to save the file.
-        $pdf->Output(__('search-') . '001' . '.pdf', 'D');
+        $fileName = __('search-') . '001' . '.pdf';
+        $pdf->Output($fileName, 'D');
     }
 
     protected static function decode($text)
