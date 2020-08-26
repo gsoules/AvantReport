@@ -96,7 +96,25 @@ class AvantReport
         }
 
         // Prompt the user to save the file.
-        $pdf->Output(__('item-') . ItemMetadata::getItemIdentifier($item) . '.pdf', 'D');
+        $fileName = __('item-') . ItemMetadata::getItemIdentifier($item) . '.pdf';
+    //    $pdf->Output($fileName, 'F');
+
+//        $fileName = "http://localhost/omeka/item-8070.pdf";
+//        $basename = basename($fileName);
+
+        if (file_exists($fileName))
+        {
+//            header('Content-Description: File Transfer');
+            header('Content-Type: application/pdf');
+            header("Content-Transfer-Encoding: Binary");
+            header('Content-Disposition: attachment; filename="'.basename($fileName).'"');
+//            header('Expires: 0');
+//            header('Cache-Control: must-revalidate');
+//            header('Pragma: public');
+//            header('Content-Length: ' . filesize($fileName));
+            readfile($fileName);
+            exit();
+        }
     }
 
     /* @var $searchResults SearchResultsTableView */
