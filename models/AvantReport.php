@@ -9,19 +9,11 @@ class AvantReport
     {
         $pdf = $this->initializeReport('P', $item);
 
-        // Emit the line under the header.
-        $pdf->Line(0.8, 1.1, 7.70, 1.1);
-
         // Emit the item title.
-        $pdf->Ln(0.2);
         $pdf->SetFont('Arial','B',13);
         $title = ItemMetadata::getItemTitle($item);
-        $pdf->Ln(0.4);
         $pdf->Cell(0, 0.2, self::decode($title), self::BORDER);
         $pdf->Ln(0.4);
-
-        // Switch to the font that subsequent text fill use.
-        $pdf->SetFont('Arial','',10);
 
         // Determine if the item has an attachment.
         $itemFiles = $item->Files;
@@ -39,11 +31,10 @@ class AvantReport
             {
                 // The attachment is not an image. Just emit its file name.
                 $pdf->Cell(1.0, 0.2, "Attachment:", self::BORDER, 0, 'R');
-                $pdf->SetFont('', 'U');
-                $pdf->AddLink();
+                $pdf->SetFont('Arial', 'U', 10);
                 $attachmentUrl = WEB_DIR . '/files/original/' . $primaryImage['filename'];
+                $pdf->AddLink();
                 $pdf->Cell(0, 0.2, $attachmentUrl, self::BORDER);
-                $pdf->SetFont('', '');
             }
             $pdf->Ln(0.4);
         }
@@ -79,25 +70,25 @@ class AvantReport
             // Show names of private elements in gray italics.
             if ($isPrivateElement)
             {
-                $pdf->SetFont('', 'I');
+                $pdf->SetFont('Arial', 'I', 10);
                 $pdf->SetTextColor(120, 120, 120);
             }
             else
             {
+                $pdf->SetFont('Arial', '', 10);
                 $pdf->SetTextColor(0, 0, 0);
             }
             $pdf->Cell(1.0, 0.18, $name, self::BORDER, 0, 'R');
 
             // Emit the element value with normal black text, left justified. Long values will wrap in their multicell.
-            $pdf->SetFont('', '');
+            $pdf->SetFont('Arial', '', 10);
             $pdf->SetTextColor(0, 0, 0);
             $pdf->MultiCell(6.0, 0.18, self::decode($elementText['text']), self::BORDER);
             $pdf->Ln(0.08);
         }
 
         // Prompt the user to save the file.
-        $fileName = __('item-') . ItemMetadata::getItemIdentifier($item) . '.pdf';
-        $pdf->Output($fileName, 'D');
+        $this->downloadReport($pdf, __('item-') . ItemMetadata::getItemIdentifier($item));
     }
 
     /* @var $searchResults SearchResultsTableView */
@@ -105,70 +96,100 @@ class AvantReport
     {
         $pdf = $this->initializeReport('L');
 
-        // Emit the line under the header.
-        $pdf->Line(0.8, 1.1, 10.2, 1.1);
-
-        $useElasticsearch = $searchResults->useElasticsearch();
-        $results = $searchResults->getResults();
-        $totalResults = $searchResults->getTotalResults();
-
-        // Emit the line under the header
-        $pdf->Ln(0.2);
-        $pdf->SetFont('Arial','B',11);
-        $pdf->Ln(0.4);
-
-        // Emit the search filters.
-        $filters = $searchResults->emitSearchFiltersText();
-        $parts = explode(PHP_EOL, $filters);
-        $searchResults->getTotalResults();
-        $filterText = "$totalResults search results for: ";
-        foreach ($parts as $index => $part)
-        {
-            if (empty($part))
-                continue;
-            if ($index > 0)
-                $filterText .= ', ';
-            $filterText .= $part;
-        }
-
-        $query = $searchResults->getQuery();
-
-        $sortField = '';
-        if (isset($query['sort']))
-            $sortField = $query['sort'];
-
-        $imagesOnly = false;
-        if (isset($query['filter']))
-            $imagesOnly = $query['filter'] == '1';
-
-        $filterText .= ", sorted by $sortField";
-        if ($imagesOnly)
-            $filterText .= ", only items with images";
-
+        // Emit the search filters and selector bar options.
+        $pdf->SetFont('Arial','B',10);
+        $filterText = $this->getFilterText($searchResults);
         $pdf->Cell(0, 0.2, $filterText, self::BORDER, 0, '');
         $pdf->Ln(0.5);
 
-        // Switch to the font that subsequent text fill use.
-        $pdf->SetFont('Arial', '', 10);
+        // Switch to the font that subsequent text will use.
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetFont('Arial', '', 8);
 
         // Emit the result rows.
-        $pdf->SetFont('Arial', '', 10);
-        foreach ($results as $result)
-        {
-            $identifier = $result['_source']['core-fields']['identifier'][0];
-            $title = $result['_source']['core-fields']['title'][0];
-            $pdf->Cell(0, 0.18, "$identifier - $title", self::BORDER, 0, '');
-            $pdf->Ln(0.4);
-        }
+        $useElasticsearch = $searchResults->useElasticsearch();
+        $results = $searchResults->getResults();
+        $layoutId = $searchResults->getSelectedLayoutId();
+        if ($layoutId == 1)
+            $this->emitRowsForDetailLayout($pdf, $results, $useElasticsearch);
+        else
+            $this->emitRowsForCompressedLayout($layoutId, $pdf, $results, $useElasticsearch);
 
         // Prompt the user to save the file.
-        $fileName = __('search-') . '001' . '.pdf';
-        $pdf->Output($fileName, 'D');
+        $this->downloadReport($pdf, __('search-') . '001');
     }
 
     protected static function decode($text)
     {
         return html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
+    }
+
+    protected function downloadReport($pdf, $name)
+    {
+        $fileName = $name . '.pdf';
+        $pdf->Output($fileName, 'D');
+    }
+
+    protected function emitRowsForCompressedLayout($layoutId, $pdf, $results, $useElasticsearch)
+    {
+        foreach ($results as $result)
+        {
+            $identifier = $result['_source']['core-fields']['identifier'][0];
+            $title = $result['_source']['core-fields']['title'][0];
+            $pdf->Cell(0, 0.18, "$identifier - $title", self::BORDER, 0, '');
+            $pdf->Ln(0.2);
+        }
+    }
+
+    protected function emitRowsForDetailLayout($pdf, $results, $useElasticsearch)
+    {
+        foreach ($results as $result)
+        {
+            $identifier = $result['_source']['core-fields']['identifier'][0];
+            $title = $result['_source']['core-fields']['title'][0];
+            $pdf->Cell(0, 0.18, "$identifier - $title", self::BORDER, 0, '');
+            $pdf->Ln(0.2);
+        }
+    }
+
+    protected function getFilterText(SearchResultsTableView $searchResults)
+    {
+        // Get the search filters.
+        $totalResults = $searchResults->getTotalResults();
+        $filterText = "$totalResults search results for: ";
+        $filters = $searchResults->emitSearchFiltersText();
+        $parts = explode(PHP_EOL, $filters);
+        foreach ($parts as $index => $part)
+        {
+            if (empty($part))
+            {
+                continue;
+            }
+            if ($index > 0)
+            {
+                $filterText .= ', ';
+            }
+            $filterText .= $part;
+        }
+
+        // Get the Sort and Items settings.
+        $query = $searchResults->getQuery();
+        $sortField = '';
+        if (isset($query['sort']))
+        {
+            $sortField = $query['sort'];
+        }
+        $imagesOnly = false;
+        if (isset($query['filter']))
+        {
+            $imagesOnly = $query['filter'] == '1';
+        }
+        $filterText .= ", sorted by $sortField";
+        if ($imagesOnly)
+        {
+            $filterText .= ", only items with images";
+        }
+        return $filterText;
     }
 
     protected function initializeReport($orientation, $item = null)
@@ -199,6 +220,11 @@ class AvantReport
             $url = WEB_ROOT . '/items/show/' . $item->id;
             $pdf->Cell(0, 0.2, $url, self::BORDER, 0, 'R');
         }
+
+        // Emit a line under the header.
+        $endLine = $orientation == 'P' ? 7.70 : 10.20;
+        $pdf->Line(0.8, 1.1, $endLine, 1.1);
+        $pdf->Ln(0.5);
 
         return $pdf;
     }
