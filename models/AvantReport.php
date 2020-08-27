@@ -96,10 +96,56 @@ class AvantReport
         $this->pdf->Output($fileName, 'D');
     }
 
+    protected function emitElementNameValuePairs(array $elementNameValuePairs, $leftColumnWidth)
+    {
+        // This method emits the two-column presentation of element name and values.
+        // The name appears right justified in the left column and the value appears in the right column.
+        // The names of private elements, if shown, appear in gray italics.
+        $previousName = '';
+        foreach ($elementNameValuePairs as $elementNameValuePair)
+        {
+            // Handle the case where an element has multiple values. The element's name is displayed
+            // only once in the left column, and each value is displayed on a separate line in the right column.
+            $name = $elementNameValuePair['name'];
+            if ($name == $previousName)
+            {
+                $name = '';
+            }
+            else
+            {
+                $previousName = $name;
+                $name .= ':';
+
+                // Show names of private elements in gray italics.
+                if ($elementNameValuePair['private'])
+                {
+                    $this->pdf->SetFont('Arial', 'I', 8);
+                    $this->pdf->SetTextColor(120, 120, 120);
+                }
+                else
+                {
+                    $this->pdf->SetFont('Arial', '', 8);
+                    $this->pdf->SetTextColor(0, 0, 0);
+                }
+            }
+
+            // Emit the element name in the left column, right justified.
+            $this->pdf->Cell($leftColumnWidth, 0.18, $name, self::BORDER, 0, 'R');
+
+            // Emit the element value with normal black text, left justified. Long values will wrap in their multicell.
+            $this->pdf->SetFont('Arial', '', 8);
+            $this->pdf->SetTextColor(0, 0, 0);
+            $rightColumnWidth = 7.0 - $leftColumnWidth;
+            $value = $elementNameValuePair['value'];
+            $this->pdf->MultiCell($rightColumnWidth, 0.18, $value, self::BORDER);
+            $this->pdf->Ln(0.02);
+        }
+    }
+
     protected function emitItemElements($item, $leftColumnWidth = 1.0)
     {
         $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
-        $columns = array();
+        $elementNameValuePairs = array();
 
         foreach ($this->detailLayoutElementNames as $elementName)
         {
@@ -117,51 +163,15 @@ class AvantReport
                     continue;
                 }
 
-                $column['private'] = $isPrivateElement;
-                $column['name'] = $elementName;
-                $column['value'] = self::decode($elementText['text']);
+                $elementData['private'] = $isPrivateElement;
+                $elementData['name'] = $elementName;
+                $elementData['value'] = self::decode($elementText['text']);
 
-                $columns[] = $column;
+                $elementNameValuePairs[] = $elementData;
             }
         }
 
-        $previousName = '';
-        foreach ($columns as $column)
-        {
-            $name = $column['name'];
-            if ($name == $previousName)
-            {
-                $name = '';
-            }
-            else
-            {
-                $previousName = $name;
-                $name .= ':';
-
-                // Emit the element name in the left column, right justified.
-                // Show names of private elements in gray italics.
-                if ($column['private'])
-                {
-                    $this->pdf->SetFont('Arial', 'I', 8);
-                    $this->pdf->SetTextColor(120, 120, 120);
-                }
-                else
-                {
-                    $this->pdf->SetFont('Arial', '', 8);
-                    $this->pdf->SetTextColor(0, 0, 0);
-                }
-            }
-
-            $this->pdf->Cell($leftColumnWidth, 0.18, $name, self::BORDER, 0, 'R');
-
-            // Emit the element value with normal black text, left justified. Long values will wrap in their multicell.
-            $this->pdf->SetFont('Arial', '', 8);
-            $this->pdf->SetTextColor(0, 0, 0);
-            $rightColumnWidth = 7.0 - $leftColumnWidth;
-            $text = $column['value'];
-            $this->pdf->MultiCell($rightColumnWidth, 0.18, $text, self::BORDER);
-            $this->pdf->Ln(0.02);
-        }
+        $this->emitElementNameValuePairs($elementNameValuePairs, $leftColumnWidth);
     }
 
     protected function emitLine($orientation, $y)
