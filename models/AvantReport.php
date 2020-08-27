@@ -150,10 +150,47 @@ class AvantReport
 
     protected function emitRowsForCompressedLayout($layoutData, $results, $useElasticsearch)
     {
+        // Push the table row a little to the right so that the table's left border aligns with the page header.
+        $indent = 0.05;
+
         $layoutColumns = $layoutData['columns'];
+
         $widths = array();
-        foreach ($layoutColumns as $layoutColumn)
-            $widths[] = 1.5;
+        $availableWidth = 9.5 - ($indent * 2);
+        $skippedColumns = array();
+        $columnCount = count($layoutColumns);
+        $columnIndex = 0;
+        foreach ($layoutColumns as $layoutColumnName)
+        {
+            $columnIndex += 1;
+
+            if ($availableWidth <= 0)
+            {
+                $skippedColumns[] = $layoutColumnName;
+                continue;
+            }
+
+            if ($layoutColumnName == 'Identifier')
+                $width = 0.6;
+            elseif ($layoutColumnName == 'Title' || $layoutColumnName == 'Description')
+                $width = $columnCount > 5 ? 1.75 : 4.0;
+            else
+                $width = $columnCount > 6 ? 1.25 : 2.0;
+
+            if ($columnIndex == $columnCount)
+            {
+                // Give the last column all of the remaining space.
+                $width = $availableWidth;
+            }
+            else
+            {
+                if ($availableWidth - $width < 0)
+                    $width = $availableWidth;
+                $availableWidth -= $width;
+            }
+
+            $widths[] = $width;
+        }
         $this->pdf->SetWidths($widths);
 
         $rows = array();
@@ -164,15 +201,16 @@ class AvantReport
             $item = $this->getItem($useElasticsearch, $result);
 
             $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
-            $privateElementsData = CommonConfig::getOptionDataForPrivateElements();
-            $skipPrivateElements = empty(current_user());
-            $previousName = '';
 
-            // Loop over each element column.
+            // Loop over each element column. Note that this logic does not need to check for and excluded private
+            // elements, because a user has to be logged in to choose a layout that contains private elements.
             $row = array();
 
             foreach ($layoutColumns as $columnName)
             {
+                if (in_array($columnName, $skippedColumns))
+                    continue;
+
                 if ($index == 0)
                     $headerRow[] = $columnName;
 
@@ -197,21 +235,16 @@ class AvantReport
             $rows[] = $data;
         }
 
-        // Push the table row a little to the right so that the table's left border aligns with the page header.
-        $indent = $this->pdf->GetX() + 0.05;
-
         foreach ($rows as $index => $row)
         {
             if ($index == 0)
             {
                 // Emit the header row.
-                $this->pdf->SetX($indent);
-                $this->pdf->Row($headerRow);
+                $this->pdf->Row($headerRow, $indent, null);
             }
 
             // Emit the result row.
-            $this->pdf->SetX($indent);
-            $this->pdf->Row($row);
+            $this->pdf->Row($row, $indent, $headerRow);
         }
     }
 
@@ -245,13 +278,14 @@ class AvantReport
             $this->pdf->Ln(0.2);
 
             // Emit the item's thumbnail image.
+            $hasImage = false;
             $imageTop = $this->pdf->GetY();
             $itemFiles = $item->Files;
             if (!$itemFiles)
             {
                 $coverImageIdentifier = ItemPreview::getCoverImageIdentifier($item->id);
                 $coverImageItem = empty($coverImageIdentifier) ? null : ItemMetadata::getItemFromIdentifier($coverImageIdentifier);
-                $itemFiles = $coverImageItem->Files;
+                $itemFiles = $coverImageItem ? $coverImageItem->Files : null;
             }
 
             if ($itemFiles)
@@ -262,6 +296,7 @@ class AvantReport
                     if ($itemFile['mime_type'] == 'image/jpeg')
                     {
                         // Emit the image.
+                        $hasImage = true;
                         $imageFileName = FILES_DIR . '/thumbnails/' . $itemFile['filename'];
                         $y = $this->pdf->GetY();
                         $this->pdf->Image($imageFileName, 0.8, $y + 0.05, null, 1.0);
@@ -277,7 +312,7 @@ class AvantReport
             $this->emitItemElements($item, 3.0);
 
             // If the metadata did not display below the image on the same page, move Y to below the image.
-            if ($this->pdf->GetY() < $imageBottom && $imagePageNo == $this->pdf->PageNo())
+            if ($hasImage && $this->pdf->GetY() < $imageBottom && $imagePageNo == $this->pdf->PageNo())
             {
                 $this->pdf->SetY($imageBottom);
             }

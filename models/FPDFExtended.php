@@ -26,7 +26,7 @@ class FPDFExtended extends FPDF
         $this->aligns = $a;
     }
 
-    function Row($data)
+    function Row($data, $indent, $header)
     {
         //Calculate the height of the row
         $nb = 0;
@@ -37,7 +37,8 @@ class FPDFExtended extends FPDF
         $h = 0.2 * $nb;
 
         //Issue a page break first if needed
-        $this->CheckPageBreak($h);
+        if ($this->CheckPageBreak($h))
+            $this->Row($header, $indent, null);
 
         //Draw the cells of the row
         for ($i = 0; $i < count($data); $i++)
@@ -46,13 +47,18 @@ class FPDFExtended extends FPDF
 
             //Save the current position
             $x = $this->GetX();
+            if ($i == 0)
+            {
+                $x += $indent;
+                $this->SetX($x);
+            }
             $y = $this->GetY();
 
             // Draw a border that has the height of the tallest cell.
             $this->Rect($x, $y, $w, $h);
 
             // Print the text with no border since it would be the height of this cell.
-            $this->MultiCell($w, 0.2, $data[$i], 0, 'L');
+            $this->MultiCell($w, 0.18, $data[$i], 0, 'L');
 
             // Put the position to the right of the cell
             $this->SetXY($x + $w, $y);
@@ -68,7 +74,9 @@ class FPDFExtended extends FPDF
         if ($this->GetY() + $h > $this->PageBreakTrigger)
         {
             $this->AddPage($this->CurOrientation);
+            return true;
         }
+        return false;
     }
 
     function NbLines($w, $txt)
