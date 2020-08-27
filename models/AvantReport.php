@@ -157,7 +157,7 @@ class AvantReport
         $this->pdf->SetWidths($widths);
 
         $rows = array();
-        $header = array();
+        $headerRow = array();
 
         foreach ($results as $index => $result)
         {
@@ -168,22 +168,27 @@ class AvantReport
             $skipPrivateElements = empty(current_user());
             $previousName = '';
 
-            // Loop over each element.
+            // Loop over each element column.
             $row = array();
-            foreach ($elementTexts as $count => $elementText)
+
+            foreach ($layoutColumns as $columnName)
             {
-                $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
-                if (!in_array($name, $layoutColumns))
-                    continue;
+                if ($index == 0)
+                    $headerRow[] = $columnName;
 
-                if ($index == 0 && !in_array($name, $header))
-                    $header[] = $name;
+                $row[$columnName] = '';
 
-                $text = self::decode($elementText['text']);
-                if (isset($row[$name]))
-                    $row[$name] = $row[$name] . PHP_EOL . $text;
-                else
-                    $row[$name] = $text;
+                foreach ($elementTexts as $count => $elementText)
+                {
+                    $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
+                    if ($name != $columnName)
+                        continue;
+
+                    $text = self::decode($elementText['text']);
+                    if (!empty($row[$columnName]))
+                        $row[$columnName] .= PHP_EOL;
+                    $row[$columnName] .= $text;
+                }
             }
 
             $data = array();
@@ -192,17 +197,20 @@ class AvantReport
             $rows[] = $data;
         }
 
-        $x = $this->pdf->GetX() + 0.05;
+        // Push the table row a little to the right so that the table's left border aligns with the page header.
+        $indent = $this->pdf->GetX() + 0.05;
 
         foreach ($rows as $index => $row)
         {
             if ($index == 0)
             {
-                $this->pdf->SetX($x);
-                $this->pdf->Row($header);
+                // Emit the header row.
+                $this->pdf->SetX($indent);
+                $this->pdf->Row($headerRow);
             }
 
-            $this->pdf->SetX($x);
+            // Emit the result row.
+            $this->pdf->SetX($indent);
             $this->pdf->Row($row);
         }
     }
