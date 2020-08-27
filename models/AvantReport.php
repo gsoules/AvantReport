@@ -150,7 +150,7 @@ class AvantReport
 
     protected function emitRowsForCompressedLayout($layoutId, $results, $useElasticsearch)
     {
-        $this->pdf->SetWidths(array(30,50,30,40));
+        $this->pdf->SetWidths(array(0.5,1,1.5,1.5));
 
         foreach ($results as $index => $result)
         {
@@ -171,8 +171,10 @@ class AvantReport
                 $row[] = self::decode($elementText['text']);
             }
 
+            // Shift to the right a bit so that the table's left border aligns with the page header.
+            $this->pdf->SetX($this->pdf->GetX() + 0.05);
+
             $this->pdf->Row($row);
-            $this->pdf->Ln(0.2);
         }
     }
 

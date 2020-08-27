@@ -34,24 +34,30 @@ class FPDFExtended extends FPDF
         {
             $nb = max($nb, $this->NbLines($this->widths[$i], $data[$i]));
         }
-        $h = 5 * $nb;
+        $h = 0.2 * $nb;
+
         //Issue a page break first if needed
         $this->CheckPageBreak($h);
+
         //Draw the cells of the row
         for ($i = 0; $i < count($data); $i++)
         {
             $w = $this->widths[$i];
-            $a = isset($this->aligns[$i]) ? $this->aligns[$i] : 'L';
+
             //Save the current position
             $x = $this->GetX();
             $y = $this->GetY();
-            //Draw the border
+
+            // Draw a border that has the height of the tallest cell.
             $this->Rect($x, $y, $w, $h);
-            //Print the text
-            $this->MultiCell($w, 5, $data[$i], 0, $a);
-            //Put the position to the right of the cell
+
+            // Print the text with no border since it would be the height of this cell.
+            $this->MultiCell($w, 0.2, $data[$i], 0, 'L');
+
+            // Put the position to the right of the cell
             $this->SetXY($x + $w, $y);
         }
+
         //Go to the next line
         $this->Ln($h);
     }
