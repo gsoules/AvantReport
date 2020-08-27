@@ -49,7 +49,7 @@ class AvantReport
     }
 
     /* @var $searchResults SearchResultsTableView */
-    public function createReportForSearchResults($searchResults, $findUrl)
+    public function createReportForSearchResults($searchResults)
     {
         $layoutId = $searchResults->getSelectedLayoutId();
         $this->initializeReport($layoutId == 1 ? 'P' : 'L');
@@ -65,16 +65,13 @@ class AvantReport
         $this->pdf->SetFont('Arial', '', 8);
 
         // Emit the result rows.
-        $useElasticsearch = $searchResults->useElasticsearch();
-        $results = $searchResults->getResults();
-        $layoutId = $searchResults->getSelectedLayoutId();
-        if ($layoutId == 1)
-            $this->emitRowsForDetailLayout($results, $useElasticsearch);
+        if ($searchResults->getSelectedLayoutId() == 1)
+            $this->emitRowsForDetailLayout($searchResults);
         else
-            $this->emitRowsForCompressedLayout($searchResults->getLayoutsData()[$layoutId], $results, $useElasticsearch);
+            $this->emitRowsForCompressedLayout($searchResults);
 
         // Prompt the user to save the file.
-        $this->downloadReport(__('search-') . '001');
+        $this->downloadReport('search-results');
     }
 
     protected static function decode($text)
@@ -148,12 +145,16 @@ class AvantReport
         $this->pdf->Line(0.8, $y, $endLine, $y);
     }
 
-    protected function emitRowsForCompressedLayout($layoutData, $results, $useElasticsearch)
+    protected function emitRowsForCompressedLayout($searchResults)
     {
+        $useElasticsearch = $searchResults->useElasticsearch();
+        $results = $searchResults->getResults();
+        $layoutId = $searchResults->getSelectedLayoutId();
+
         // Push the table row a little to the right so that the table's left border aligns with the page header.
         $indent = 0.05;
 
-        $layoutColumns = $layoutData['columns'];
+        $layoutColumns = $searchResults->getLayoutsData()[$layoutId]['columns'];
 
         $widths = array();
         $availableWidth = 9.5 - ($indent * 2);
@@ -248,8 +249,11 @@ class AvantReport
         }
     }
 
-    protected function emitRowsForDetailLayout($results, $useElasticsearch)
+    protected function emitRowsForDetailLayout($searchResults)
     {
+        $useElasticsearch = $searchResults->useElasticsearch();
+        $results = $searchResults->getResults();
+
         foreach ($results as  $result)
         {
             // Determine if the next row needs to start on a new page.
