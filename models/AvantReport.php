@@ -3,7 +3,7 @@
 class AvantReport
 {
     // For development/debugging, set the border to 1 so you can see individual cells.
-    const BORDER = 1;
+    const BORDER = 0;
 
     protected $pdf;
 
@@ -55,10 +55,10 @@ class AvantReport
         $this->initializeReport($layoutId == 1 ? 'P' : 'L');
 
         // Emit the search filters and selector bar options.
-        $this->pdf->SetFont('Arial','B',10);
+        $this->pdf->SetFont('Arial', 'B', 9);
         $filterText = $this->getFilterText($searchResults);
         $this->pdf->Cell(0, 0.2, $filterText, self::BORDER, 0, '');
-        $this->pdf->Ln(0.5);
+        $this->pdf->Ln(0.3);
 
         // Switch to the font that subsequent text will use.
         $this->pdf->SetTextColor(0, 0, 0);
@@ -138,9 +138,14 @@ class AvantReport
             $this->pdf->SetTextColor(0, 0, 0);
             $rightColumnWidth = 7.0 - $leftColumnWidth;
             $this->pdf->MultiCell($rightColumnWidth, 0.18, self::decode($elementText['text']), self::BORDER);
-            $y = $this->pdf->GetY();
             $this->pdf->Ln(0.02);
         }
+    }
+
+    protected function emitLine($orientation, $y)
+    {
+        $endLine = $orientation == 'P' ? 7.70 : 10.20;
+        $this->pdf->Line(0.8, $y, $endLine, $y);
     }
 
     protected function emitRowsForCompressedLayout($layoutId, $results, $useElasticsearch)
@@ -159,8 +164,9 @@ class AvantReport
     {
         $firstItemOnPage = true;
 
-        foreach ($results as $result)
+        foreach ($results as  $result)
         {
+
             if ($useElasticsearch)
             {
                 $source = $result['_source'];
@@ -182,15 +188,18 @@ class AvantReport
             {
                 $this->pdf->AddPage();
                 $firstItemOnPage = true;
-                $y = $this->pdf->GetY();
             }
 
             if (!$firstItemOnPage)
             {
                 $this->pdf->Ln(0.1);
+                $this->pdf->SetDrawColor(160, 160, 160);
+                $this->emitLine('P', $this->pdf->GetY());
+                $this->pdf->Ln(0.1);
             }
 
             $this->pdf->SetFont('Arial', 'B', 8);
+            $this->pdf->SetTextColor(64, 64, 64);
             $this->pdf->Cell(0, 0.18, "$title", self::BORDER, 0, '');
             $this->pdf->Ln(0.2);
 
@@ -212,7 +221,8 @@ class AvantReport
                     {
                         // Emit the image.
                         $imageFileName = FILES_DIR . '/thumbnails/' . $itemFile['filename'];
-                        $this->pdf->Image($imageFileName, 0.8, null, null, 1.0);
+                        $y = $this->pdf->GetY();
+                        $this->pdf->Image($imageFileName, 0.8, $y + 0.05, null, 1.0);
                         $imageBottom = $this->pdf->GetY();
                         $imagePageNo = $this->pdf->PageNo();
                         $this->pdf->SetY($imageTop);
@@ -265,6 +275,8 @@ class AvantReport
         {
             $imagesOnly = $query['filter'] == '1';
         }
+        if (empty($sortField))
+            $sortField = __('relevance');
         $filterText .= ", sorted by $sortField";
         if ($imagesOnly)
         {
@@ -302,9 +314,8 @@ class AvantReport
             $this->pdf->Cell(0, 0.2, $url, self::BORDER, 0, 'R');
         }
 
-        // Emit a line under the header.
-        $endLine = $orientation == 'P' ? 7.70 : 10.20;
-        $this->pdf->Line(0.8, 1.1, $endLine, 1.1);
+        // Emit a line, followed by spacing, under the header.
+        $this->emitLine($orientation, 1.1);
         $this->pdf->Ln(0.5);
     }
 }
