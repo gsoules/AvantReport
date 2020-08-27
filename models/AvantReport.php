@@ -3,17 +3,19 @@
 class AvantReport
 {
     // For development/debugging, set the border to 1 so you can see individual cells.
-    const BORDER = 0;
+    const BORDER = 1;
+
+    protected $pdf;
 
     public function createReportForItem($item)
     {
-        $pdf = $this->initializeReport('P', $item);
+        $this->initializeReport('P', $item);
 
         // Emit the item title.
-        $pdf->SetFont('Arial','B',13);
+        $this->pdf->SetFont('Arial','B',13);
         $title = ItemMetadata::getItemTitle($item);
-        $pdf->Cell(0, 0.2, self::decode($title), self::BORDER);
-        $pdf->Ln(0.4);
+        $this->pdf->Cell(0, 0.2, self::decode($title), self::BORDER);
+        $this->pdf->Ln(0.4);
 
         // Determine if the item has an attachment.
         $itemFiles = $item->Files;
@@ -25,21 +27,70 @@ class AvantReport
             {
                 // Emit the image.
                 $imageFileName = FILES_DIR . '/fullsize/' . $primaryImage['filename'];
-                $pdf->Image($imageFileName);
+                $this->pdf->Image($imageFileName);
             }
             else
             {
                 // The attachment is not an image. Just emit its file name.
-                $pdf->Cell(1.0, 0.2, "Attachment:", self::BORDER, 0, 'R');
-                $pdf->SetFont('Arial', 'U', 10);
+                $this->pdf->Cell(1.0, 0.2, "Attachment:", self::BORDER, 0, 'R');
+                $this->pdf->SetFont('Arial', 'U', 10);
                 $attachmentUrl = WEB_DIR . '/files/original/' . $primaryImage['filename'];
-                $pdf->AddLink();
-                $pdf->Cell(0, 0.2, $attachmentUrl, self::BORDER);
+                $this->pdf->AddLink();
+                $this->pdf->Cell(0, 0.2, $attachmentUrl, self::BORDER);
             }
-            $pdf->Ln(0.4);
+            $this->pdf->Ln(0.4);
         }
 
         // Get the item's elements.
+        $this->emitItemElements($item);
+
+        // Prompt the user to save the file.
+        $this->downloadReport(__('item-') . ItemMetadata::getItemIdentifier($item));
+    }
+
+    /* @var $searchResults SearchResultsTableView */
+    public function createReportForSearchResults($searchResults, $findUrl)
+    {
+        $layoutId = $searchResults->getSelectedLayoutId();
+        $this->initializeReport($layoutId == 1 ? 'P' : 'L');
+
+        // Emit the search filters and selector bar options.
+        $this->pdf->SetFont('Arial','B',10);
+        $filterText = $this->getFilterText($searchResults);
+        $this->pdf->Cell(0, 0.2, $filterText, self::BORDER, 0, '');
+        $this->pdf->Ln(0.5);
+
+        // Switch to the font that subsequent text will use.
+        $this->pdf->SetTextColor(0, 0, 0);
+        $this->pdf->SetFont('Arial', '', 8);
+
+        // Emit the result rows.
+        $useElasticsearch = $searchResults->useElasticsearch();
+        $results = $searchResults->getResults();
+        $layoutId = $searchResults->getSelectedLayoutId();
+        if ($layoutId == 1)
+            $this->emitRowsForDetailLayout($results, $useElasticsearch);
+        else
+            $this->emitRowsForCompressedLayout($layoutId, $results, $useElasticsearch);
+
+        // Prompt the user to save the file.
+        $this->downloadReport(__('search-') . '001');
+    }
+
+    protected static function decode($text)
+    {
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
+        return iconv('UTF-8', 'windows-1252', $text);
+    }
+
+    protected function downloadReport($name)
+    {
+        $fileName = $name . '.pdf';
+        $this->pdf->Output($fileName, 'D');
+    }
+
+    protected function emitItemElements($item, $leftColumnWidth = 1.0)
+    {
         $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
         $privateElementsData = CommonConfig::getOptionDataForPrivateElements();
         $skipPrivateElements = empty(current_user());
@@ -49,11 +100,13 @@ class AvantReport
         foreach ($elementTexts as $elementText)
         {
             $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
-            $isPrivateElement = in_array($name,$privateElementsData);
+            $isPrivateElement = in_array($name, $privateElementsData);
 
             // Skip private elements if no user is logged in.
             if ($isPrivateElement && $skipPrivateElements)
+            {
                 continue;
+            }
 
             // Put a colon after the element name. If the element has multiple values, only show the name on the first.
             if ($name == $previousName)
@@ -70,119 +123,78 @@ class AvantReport
             // Show names of private elements in gray italics.
             if ($isPrivateElement)
             {
-                $pdf->SetFont('Arial', 'I', 10);
-                $pdf->SetTextColor(120, 120, 120);
+                $this->pdf->SetFont('Arial', 'I', 8);
+                $this->pdf->SetTextColor(120, 120, 120);
             }
             else
             {
-                $pdf->SetFont('Arial', '', 10);
-                $pdf->SetTextColor(0, 0, 0);
+                $this->pdf->SetFont('Arial', '', 8);
+                $this->pdf->SetTextColor(0, 0, 0);
             }
-            $pdf->Cell(1.0, 0.18, $name, self::BORDER, 0, 'R');
+            $this->pdf->Cell($leftColumnWidth, 0.18, $name, self::BORDER, 0, 'R');
 
             // Emit the element value with normal black text, left justified. Long values will wrap in their multicell.
-            $pdf->SetFont('Arial', '', 10);
-            $pdf->SetTextColor(0, 0, 0);
-            $pdf->MultiCell(6.0, 0.18, self::decode($elementText['text']), self::BORDER);
-            $pdf->Ln(0.08);
+            $this->pdf->SetFont('Arial', '', 8);
+            $this->pdf->SetTextColor(0, 0, 0);
+            $rightColumnWidth = 7.0 - $leftColumnWidth;
+            $this->pdf->MultiCell($rightColumnWidth, 0.18, self::decode($elementText['text']), self::BORDER);
+            $y = $this->pdf->GetY();
+            $this->pdf->Ln(0.02);
         }
-
-        // Prompt the user to save the file.
-        $this->downloadReport($pdf, __('item-') . ItemMetadata::getItemIdentifier($item));
     }
 
-    /* @var $searchResults SearchResultsTableView */
-    public function createReportForSearchResults($searchResults, $findUrl)
-    {
-        $layoutId = $searchResults->getSelectedLayoutId();
-        $pdf = $this->initializeReport($layoutId == 1 ? 'P' : 'L');
-
-        // Emit the search filters and selector bar options.
-        $pdf->SetFont('Arial','B',10);
-        $filterText = $this->getFilterText($searchResults);
-        $pdf->Cell(0, 0.2, $filterText, self::BORDER, 0, '');
-        $pdf->Ln(0.5);
-
-        // Switch to the font that subsequent text will use.
-        $pdf->SetTextColor(0, 0, 0);
-        $pdf->SetFont('Arial', '', 8);
-
-        // Emit the result rows.
-        $useElasticsearch = $searchResults->useElasticsearch();
-        $results = $searchResults->getResults();
-        $layoutId = $searchResults->getSelectedLayoutId();
-        if ($layoutId == 1)
-            $this->emitRowsForDetailLayout($pdf, $results, $useElasticsearch);
-        else
-            $this->emitRowsForCompressedLayout($layoutId, $pdf, $results, $useElasticsearch);
-
-        // Prompt the user to save the file.
-        $this->downloadReport($pdf, __('search-') . '001');
-    }
-
-    protected static function decode($text)
-    {
-        $text = html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
-        return iconv('UTF-8', 'windows-1252', $text);
-    }
-
-    protected function downloadReport($pdf, $name)
-    {
-        $fileName = $name . '.pdf';
-        $pdf->Output($fileName, 'D');
-    }
-
-    protected function emitRowsForCompressedLayout($layoutId, $pdf, $results, $useElasticsearch)
+    protected function emitRowsForCompressedLayout($layoutId, $results, $useElasticsearch)
     {
         foreach ($results as $result)
         {
             $identifier = $result['_source']['core-fields']['identifier'][0];
             $title = $result['_source']['core-fields']['title'][0];
-            $pdf->Cell(0, 0.18, "$identifier - $title", self::BORDER, 0, '');
-            $pdf->Ln(0.2);
+            $title = self::decode($title);
+            $this->pdf->Cell(0, 0.18, "$identifier - $title", self::BORDER, 0, '');
+            $this->pdf->Ln(0.2);
         }
     }
 
-    protected function emitRowsForDetailLayout($pdf, $results, $useElasticsearch)
+    protected function emitRowsForDetailLayout($results, $useElasticsearch)
     {
         $firstItemOnPage = true;
 
         foreach ($results as $result)
         {
-            $y = $pdf->GetY();
-            if ($y > 8.5)
-            {
-                $pdf->AddPage();
-                $firstItemOnPage = true;
-            }
-
-            if (!$firstItemOnPage)
-            {
-                $pdf->Ln(0.1);
-            }
-
             if ($useElasticsearch)
             {
                 $source = $result['_source'];
                 $itemId = $source['item']['id'];
                 $item = ItemMetadata::getItemFromId($itemId);
-                $identifier = $source['core-fields']['identifier'][0];
                 $title = $source['core-fields']['title'][0];
             }
             else
             {
                 $item = $result;
                 $itemId = $item->id;
-                $identifier = ItemMetadata::getItemIdentifier($item);
                 $title = ItemMetadata::getItemTitle($item);
             }
 
             $title = self::decode($title);
-            $pdf->SetFont('Arial', '', 9);
-            $pdf->Cell(0, 0.18, "$title", self::BORDER, 0, '');
-            $pdf->Ln(0.2);
 
-            $imageTop = $pdf->GetY();
+            $y = $this->pdf->GetY();
+            if ($y > 8.5)
+            {
+                $this->pdf->AddPage();
+                $firstItemOnPage = true;
+                $y = $this->pdf->GetY();
+            }
+
+            if (!$firstItemOnPage)
+            {
+                $this->pdf->Ln(0.1);
+            }
+
+            $this->pdf->SetFont('Arial', 'B', 8);
+            $this->pdf->Cell(0, 0.18, "$title", self::BORDER, 0, '');
+            $this->pdf->Ln(0.2);
+
+            $imageTop = $this->pdf->GetY();
             $itemFiles = $item->Files;
             if (!$itemFiles)
             {
@@ -200,21 +212,22 @@ class AvantReport
                     {
                         // Emit the image.
                         $imageFileName = FILES_DIR . '/thumbnails/' . $itemFile['filename'];
-                        $pdf->Image($imageFileName, null, null, null, 1.0);
-                        $imageBottom = $pdf->GetY();
-                        $pdf->SetY($imageTop);
+                        $this->pdf->Image($imageFileName, 0.8, null, null, 1.0);
+                        $imageBottom = $this->pdf->GetY();
+                        $imagePageNo = $this->pdf->PageNo();
+                        $this->pdf->SetY($imageTop);
                         break;
                     }
                 }
             }
 
-            $pdf->SetX(3.0);
-            $pdf->SetFont('Arial', '', 8);
-            $pdf->Cell(0, 0.18, "$identifier", self::BORDER, 0, '');
-            $pdf->Ln(0.15);
+            $this->emitItemElements($item, 3.0);
 
-            if ($pdf->GetY() < $imageBottom)
-                $pdf->SetY($imageBottom);
+            // If the metadata did not display below the image on the same page, move Y to below the image.
+            if ($this->pdf->GetY() < $imageBottom && $imagePageNo == $this->pdf->PageNo())
+            {
+                $this->pdf->SetY($imageBottom);
+            }
 
             $firstItemOnPage = false;
         }
@@ -262,38 +275,36 @@ class AvantReport
 
     protected function initializeReport($orientation, $item = null)
     {
-        $pdf = new FPDFExtended($orientation, 'in', 'letter');
+        $this->pdf = new FPDFExtended($orientation, 'in', 'letter');
 
         // Replace {nb} in the footer with the page number.
-        $pdf->AliasNbPages();
+        $this->pdf->AliasNbPages();
 
         // Set the margins.
-        $pdf->SetTopMargin(0.75);
-        $pdf->SetLeftMargin(0.75);
-        $pdf->SetRightMargin(0.75);
+        $this->pdf->SetTopMargin(0.75);
+        $this->pdf->SetLeftMargin(0.75);
+        $this->pdf->SetRightMargin(0.75);
 
         // Add the first page. Other pages are added automatically.
-        $pdf->AddPage();
+        $this->pdf->AddPage();
 
         // Emit the organization name and item URL at the top of the page, with a line under.
-        $pdf->SetFont('Arial','',10);
-        $pdf->SetTextColor(80, 80, 80);
-        $pdf->Cell(0, 0.2, get_option('site_title') . ' ' . __('Digital Archive'), self::BORDER);
+        $this->pdf->SetFont('Arial','',10);
+        $this->pdf->SetTextColor(80, 80, 80);
+        $this->pdf->Cell(0, 0.2, get_option('site_title') . ' ' . __('Digital Archive'), self::BORDER);
 
         // Emit a link to the item.
         if ($item)
         {
-            $pdf->SetFont('','U');
-            $pdf->AddLink();
+            $this->pdf->SetFont('', 'U', 9);
+            $this->pdf->AddLink();
             $url = WEB_ROOT . '/items/show/' . $item->id;
-            $pdf->Cell(0, 0.2, $url, self::BORDER, 0, 'R');
+            $this->pdf->Cell(0, 0.2, $url, self::BORDER, 0, 'R');
         }
 
         // Emit a line under the header.
         $endLine = $orientation == 'P' ? 7.70 : 10.20;
-        $pdf->Line(0.8, 1.1, $endLine, 1.1);
-        $pdf->Ln(0.5);
-
-        return $pdf;
+        $this->pdf->Line(0.8, 1.1, $endLine, 1.1);
+        $this->pdf->Ln(0.5);
     }
 }
