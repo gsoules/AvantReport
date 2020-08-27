@@ -162,11 +162,24 @@ class AvantReport
 
     protected function emitRowsForDetailLayout($results, $useElasticsearch)
     {
-        $firstItemOnPage = true;
-
         foreach ($results as  $result)
         {
+            // Determine if the next row needs to start on a new page.
+            if ($this->pdf->GetY() > 8.5)
+            {
+                // Start the next row on a new page.
+                $this->pdf->AddPage();
+            }
+            else
+            {
+                // Draw a line above the next row.
+                $this->pdf->Ln(0.1);
+                $this->pdf->SetDrawColor(160, 160, 160);
+                $this->emitLine('P', $this->pdf->GetY());
+                $this->pdf->Ln(0.1);
+            }
 
+            // Get the item's title.
             if ($useElasticsearch)
             {
                 $source = $result['_source'];
@@ -180,29 +193,15 @@ class AvantReport
                 $itemId = $item->id;
                 $title = ItemMetadata::getItemTitle($item);
             }
-
             $title = self::decode($title);
 
-            $y = $this->pdf->GetY();
-            if ($y > 8.5)
-            {
-                $this->pdf->AddPage();
-                $firstItemOnPage = true;
-            }
-
-            if (!$firstItemOnPage)
-            {
-                $this->pdf->Ln(0.1);
-                $this->pdf->SetDrawColor(160, 160, 160);
-                $this->emitLine('P', $this->pdf->GetY());
-                $this->pdf->Ln(0.1);
-            }
-
+            // Emit the title
             $this->pdf->SetFont('Arial', 'B', 8);
             $this->pdf->SetTextColor(64, 64, 64);
             $this->pdf->Cell(0, 0.18, "$title", self::BORDER, 0, '');
             $this->pdf->Ln(0.2);
 
+            // Emit the item's thumbnail image.
             $imageTop = $this->pdf->GetY();
             $itemFiles = $item->Files;
             if (!$itemFiles)
@@ -231,6 +230,7 @@ class AvantReport
                 }
             }
 
+            // Emit the item's element names and values.
             $this->emitItemElements($item, 3.0);
 
             // If the metadata did not display below the image on the same page, move Y to below the image.
@@ -238,8 +238,6 @@ class AvantReport
             {
                 $this->pdf->SetY($imageBottom);
             }
-
-            $firstItemOnPage = false;
         }
     }
 
