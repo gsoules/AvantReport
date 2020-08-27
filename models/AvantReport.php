@@ -71,7 +71,7 @@ class AvantReport
         if ($layoutId == 1)
             $this->emitRowsForDetailLayout($results, $useElasticsearch);
         else
-            $this->emitRowsForCompressedLayout($layoutId, $results, $useElasticsearch);
+            $this->emitRowsForCompressedLayout($searchResults->getLayoutsData()[$layoutId], $results, $useElasticsearch);
 
         // Prompt the user to save the file.
         $this->downloadReport(__('search-') . '001');
@@ -148,9 +148,16 @@ class AvantReport
         $this->pdf->Line(0.8, $y, $endLine, $y);
     }
 
-    protected function emitRowsForCompressedLayout($layoutId, $results, $useElasticsearch)
+    protected function emitRowsForCompressedLayout($layoutData, $results, $useElasticsearch)
     {
-        $this->pdf->SetWidths(array(0.5,1,1.5,1.5));
+        $layoutColumns = $layoutData['columns'];
+        $widths = array();
+        foreach ($layoutColumns as $layoutColumn)
+            $widths[] = 1.5;
+        $this->pdf->SetWidths($widths);
+
+        $rows = array();
+        $header = array();
 
         foreach ($results as $index => $result)
         {
@@ -162,18 +169,40 @@ class AvantReport
             $previousName = '';
 
             // Loop over each element.
-            $row= array();
+            $row = array();
             foreach ($elementTexts as $count => $elementText)
             {
-                if ($count > 3)
-                    break;
+                $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
+                if (!in_array($name, $layoutColumns))
+                    continue;
 
-                $row[] = self::decode($elementText['text']);
+                if ($index == 0 && !in_array($name, $header))
+                    $header[] = $name;
+
+                $text = self::decode($elementText['text']);
+                if (isset($row[$name]))
+                    $row[$name] = $row[$name] . PHP_EOL . $text;
+                else
+                    $row[$name] = $text;
             }
 
-            // Shift to the right a bit so that the table's left border aligns with the page header.
-            $this->pdf->SetX($this->pdf->GetX() + 0.05);
+            $data = array();
+            foreach($row as $cell)
+                $data[] = $cell;
+            $rows[] = $data;
+        }
 
+        $x = $this->pdf->GetX() + 0.05;
+
+        foreach ($rows as $index => $row)
+        {
+            if ($index == 0)
+            {
+                $this->pdf->SetX($x);
+                $this->pdf->Row($header);
+            }
+
+            $this->pdf->SetX($x);
             $this->pdf->Row($row);
         }
     }
