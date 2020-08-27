@@ -150,12 +150,28 @@ class AvantReport
 
     protected function emitRowsForCompressedLayout($layoutId, $results, $useElasticsearch)
     {
-        foreach ($results as $result)
+        $this->pdf->SetWidths(array(30,50,30,40));
+
+        foreach ($results as $index => $result)
         {
-            $identifier = $result['_source']['core-fields']['identifier'][0];
-            $title = $result['_source']['core-fields']['title'][0];
-            $title = self::decode($title);
-            $this->pdf->Cell(0, 0.18, "$identifier - $title", self::BORDER, 0, '');
+            $item = $this->getItem($useElasticsearch, $result);
+
+            $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
+            $privateElementsData = CommonConfig::getOptionDataForPrivateElements();
+            $skipPrivateElements = empty(current_user());
+            $previousName = '';
+
+            // Loop over each element.
+            $row= array();
+            foreach ($elementTexts as $count => $elementText)
+            {
+                if ($count > 3)
+                    break;
+
+                $row[] = self::decode($elementText['text']);
+            }
+
+            $this->pdf->Row($row);
             $this->pdf->Ln(0.2);
         }
     }
@@ -179,21 +195,9 @@ class AvantReport
                 $this->pdf->Ln(0.1);
             }
 
-            // Get the item's title.
-            if ($useElasticsearch)
-            {
-                $source = $result['_source'];
-                $itemId = $source['item']['id'];
-                $item = ItemMetadata::getItemFromId($itemId);
-                $title = $source['core-fields']['title'][0];
-            }
-            else
-            {
-                $item = $result;
-                $itemId = $item->id;
-                $title = ItemMetadata::getItemTitle($item);
-            }
-            $title = self::decode($title);
+            // Get the item and its title.
+            $item = $this->getItem($useElasticsearch, $result);
+            $title = self::decode(ItemMetadata::getItemTitle($item));
 
             // Emit the title
             $this->pdf->SetFont('Arial', 'B', 8);
@@ -206,7 +210,7 @@ class AvantReport
             $itemFiles = $item->Files;
             if (!$itemFiles)
             {
-                $coverImageIdentifier = ItemPreview::getCoverImageIdentifier($itemId);
+                $coverImageIdentifier = ItemPreview::getCoverImageIdentifier($item->id);
                 $coverImageItem = empty($coverImageIdentifier) ? null : ItemMetadata::getItemFromIdentifier($coverImageIdentifier);
                 $itemFiles = $coverImageItem->Files;
             }
@@ -281,6 +285,19 @@ class AvantReport
             $filterText .= ", only items with images";
         }
         return $filterText;
+    }
+
+    protected function getItem($useElasticsearch, $result)
+    {
+        if ($useElasticsearch)
+        {
+            $item = ItemMetadata::getItemFromId($result['_source']['item']['id']);
+        }
+        else
+        {
+            $item = $result;
+        }
+        return $item;
     }
 
     protected function initializeReport($orientation, $item = null)
