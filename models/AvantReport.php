@@ -8,6 +8,7 @@ class AvantReport
     protected $detailLayoutElementNames = array();
     protected $pdf;
     protected $privateElementsData = array();
+    protected $reportItems = array();
     protected $skipPrivateElements;
 
     function __construct()
@@ -37,6 +38,8 @@ class AvantReport
 
     public function createReportForItem($item)
     {
+        $this->reportItems[] = new AvantReportItem($item, $this->detailLayoutElementNames, $this->privateElementsData);
+
         $this->initializeReport('P', $item);
 
         // Emit the item title.
@@ -79,6 +82,13 @@ class AvantReport
     /* @var $searchResults SearchResultsTableView */
     public function createReportForSearchResults($searchResults)
     {
+        $sharedSearchEnabled = $searchResults->sharedSearchingEnabled();
+        $results = $searchResults->getResults();
+        foreach ($results as $index => $result)
+        {
+            $this->reportItems[] = new AvantReportItem($result, $this->detailLayoutElementNames, $this->privateElementsData, $sharedSearchEnabled);
+        }
+
         $layoutId = $searchResults->getSelectedLayoutId();
         $this->initializeReport($layoutId == 1 ? 'P' : 'L');
 
@@ -102,7 +112,7 @@ class AvantReport
         $this->downloadReport('search-results');
     }
 
-    protected static function decode($text)
+    public static function decode($text)
     {
         $text = html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
         return iconv('UTF-8', 'windows-1252', $text);
@@ -226,42 +236,9 @@ class AvantReport
         $sharedSearchingEnabled = $searchResults->sharedSearchingEnabled();
 
         // Create an array containing all of the result's element values.
-        foreach ($results as $index => $result)
+        foreach ($this->reportItems as $index => $reportItem)
         {
-            $elementValues = array();
-
-            if ($useElasticsearch)
-            {
-                $source = $result["_source"];
-                foreach ($source['core-fields'] as $name => $corefield)
-                {
-                    foreach ($corefield as $value)
-                    {
-                        if ($name == 'identifier' && $sharedSearchingEnabled)
-                        {
-                            $value = $source["item"]["contributor-id"] . "-$value";
-                        }
-                        $elementValues[] = array('name' => $name, 'value' => self::decode($value));
-                    }
-                }
-                foreach ($source['local-fields'] as $name => $localfield)
-                {
-                    foreach ($localfield as $value)
-                    {
-                        $elementValues[] = array('name' => $name, 'value' => self::decode($value));
-                    }
-                }
-            }
-            else
-            {
-                $item = $result;
-                $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
-                foreach ($elementTexts as $elementText)
-                {
-                    $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
-                    $elementValues[] = array('name' => $name, 'value' => self::decode($elementText['text']));
-                }
-            }
+            $elementNameValuePairs = $reportItem->getElementNameValuePairs();
 
             // Loop over each element column. Note that this logic does not need to check for and exclude private
             // elements because a user has to be logged in to choose a layout that contains private elements.
@@ -277,31 +254,37 @@ class AvantReport
 
                 $cells[$columnName] = '';
 
-                foreach ($elementValues as $elementValue)
+                foreach ($elementNameValuePairs as $elementNameValuePair)
                 {
-                    $name = $elementValue['name'];
+                    if ($elementNameValuePair == null)
+                        continue;
 
-                    // Skip any elements that are not in the layout.
-                    if ($useElasticsearch)
+                    foreach ($elementNameValuePair as $pair)
                     {
-                        $fieldName = $avantElasticsearch->convertElementNameToElasticsearchFieldName($columnName);
-                        if ($name != $fieldName)
-                            continue;
-                    }
-                    else
-                    {
-                        if ($name != $columnName)
-                            continue;
-                    }
+                        $name = $pair['name'];
 
-                    // Add the element's value(s) to the cell.
-                    $value = $elementValue['value'];
-                    if (!empty($cells[$columnName]))
-                    {
-                        // Use EOL to separate mulitple values for the same element.
-                        $cells[$columnName] .= PHP_EOL;
+                        // Skip any elements that are not in the layout.
+                        if ($useElasticsearch)
+                        {
+                            $fieldName = $avantElasticsearch->convertElementNameToElasticsearchFieldName($columnName);
+                            if ($name != $fieldName)
+                                continue;
+                        }
+                        else
+                        {
+                            if ($name != $columnName)
+                                continue;
+                        }
+
+                        // Add the element's value(s) to the cell.
+                        $value = $pair['value'];
+                        if (!empty($cells[$columnName]))
+                        {
+                            // Use EOL to separate mulitple values for the same element.
+                            $cells[$columnName] .= PHP_EOL;
+                        }
+                        $cells[$columnName] .= $value;
                     }
-                    $cells[$columnName] .= $value;
                 }
             }
 
