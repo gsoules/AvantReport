@@ -5,16 +5,34 @@ class AvantReport
     // For development/debugging, set the border to 1 so you can see individual cells.
     const BORDER = 0;
 
-    protected $detailLayoutElementNames;
+    protected $detailLayoutElementNames = array();
     protected $pdf;
-    protected $privateElementsData;
+    protected $privateElementsData = array();
     protected $skipPrivateElements;
 
     function __construct()
     {
-        $this->detailLayoutElementNames = SearchConfig::getOptionDataForDetailLayout()[0];
         $this->privateElementsData = CommonConfig::getOptionDataForPrivateElements();
         $this->skipPrivateElements = empty(current_user());
+
+        // Get the names of public elements in the order in which they appear on a public item view page.
+        $displayOrderElementNames = ElementsConfig::getOptionDataForDisplayOrder();
+        foreach ($displayOrderElementNames as $displayOrderElementName)
+            $this->detailLayoutElementNames[] = $displayOrderElementName;
+
+        // Get the names of all non Dublin Core elements and add them to the list.
+        $itemTypeElements = get_db()->getTable('Element')->findByItemType(AvantAdmin::getCustomItemTypeId());
+        foreach ($itemTypeElements as $element)
+        {
+            $name = $element->name;
+            if (in_array($name, $this->detailLayoutElementNames))
+            {
+                // Skip elements that are already in the list.
+                continue;
+            }
+
+            $this->detailLayoutElementNames[] = $name;
+        }
     }
 
     public function createReportForItem($item)
@@ -102,73 +120,81 @@ class AvantReport
         // The name appears right justified in the left column and the value appears in the right column.
         // The names of private elements, if shown, appear in gray italics.
         $previousName = '';
-        foreach ($elementNameValuePairs as $elementNameValuePair)
+        foreach ($elementNameValuePairs as $elementName => $elementNameValuePair)
         {
-            // Handle the case where an element has multiple values. The element's name is displayed
-            // only once in the left column, and each value is displayed on a separate line in the right column.
-            $name = $elementNameValuePair['name'];
-            if ($name == $previousName)
-            {
-                $name = '';
-            }
-            else
-            {
-                $previousName = $name;
-                $name .= ':';
+            if ($elementNameValuePair == null)
+                continue;
 
-                // Show names of private elements in gray italics.
-                if ($elementNameValuePair['private'])
+            foreach ($elementNameValuePair as $pair)
+            {
+                // Handle the case where an element has multiple values. The element's name is displayed
+                // only once in the left column, and each value is displayed on a separate line in the right column.
+                $name = $elementName;
+                if ($name == $previousName)
                 {
-                    $this->pdf->SetFont('Arial', 'I', 8);
-                    $this->pdf->SetTextColor(120, 120, 120);
+                    $name = '';
                 }
                 else
                 {
-                    $this->pdf->SetFont('Arial', '', 8);
-                    $this->pdf->SetTextColor(0, 0, 0);
+                    $previousName = $name;
+                    $name .= ':';
+
+                    // Show names of private elements in gray italics.
+                    if ($pair['private'])
+                    {
+                        $this->pdf->SetFont('Arial', 'I', 8);
+                        $this->pdf->SetTextColor(120, 120, 120);
+                    }
+                    else
+                    {
+                        $this->pdf->SetFont('Arial', '', 8);
+                        $this->pdf->SetTextColor(0, 0, 0);
+                    }
                 }
+
+                // Emit the element name in the left column, right justified.
+                $this->pdf->Cell($leftColumnWidth, 0.18, $name, self::BORDER, 0, 'R');
+
+                // Emit the element value with normal black text, left justified. Long values will wrap in their multicell.
+                $this->pdf->SetFont('Arial', '', 8);
+                $this->pdf->SetTextColor(0, 0, 0);
+                $rightColumnWidth = 7.0 - $leftColumnWidth;
+                $value = $pair['value'];
+                $this->pdf->MultiCell($rightColumnWidth, 0.18, $value, self::BORDER);
+                $this->pdf->Ln(0.02);
             }
-
-            // Emit the element name in the left column, right justified.
-            $this->pdf->Cell($leftColumnWidth, 0.18, $name, self::BORDER, 0, 'R');
-
-            // Emit the element value with normal black text, left justified. Long values will wrap in their multicell.
-            $this->pdf->SetFont('Arial', '', 8);
-            $this->pdf->SetTextColor(0, 0, 0);
-            $rightColumnWidth = 7.0 - $leftColumnWidth;
-            $value = $elementNameValuePair['value'];
-            $this->pdf->MultiCell($rightColumnWidth, 0.18, $value, self::BORDER);
-            $this->pdf->Ln(0.02);
         }
     }
 
     protected function emitItemElements($item, $leftColumnWidth = 1.0)
     {
-        $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
+        // Create an array of element names in the order in which they appear on a public item view page.
         $elementNameValuePairs = array();
+        foreach ($this->detailLayoutElementNames as $name)
+            $elementNameValuePairs[$name] = null;
 
-        foreach ($this->detailLayoutElementNames as $elementName)
+        // Get each of this item's element values and attach it to it's element name in the pairs array.
+        $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
+        foreach ($elementTexts as $elementText)
         {
-            foreach ($elementTexts as $elementText)
+            $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
+
+            // Skip private elements if no user is logged in.
+            $isPrivateElement = in_array($name, $this->privateElementsData);
+            if ($isPrivateElement && $this->skipPrivateElements)
             {
-                $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
-                if ($name != $elementName)
-                    continue;
-
-                $isPrivateElement = in_array($name, $this->privateElementsData);
-
-                // Skip private elements if no user is logged in.
-                if ($isPrivateElement && $this->skipPrivateElements)
-                {
-                    continue;
-                }
-
-                $elementData['private'] = $isPrivateElement;
-                $elementData['name'] = $elementName;
-                $elementData['value'] = self::decode($elementText['text']);
-
-                $elementNameValuePairs[] = $elementData;
+                continue;
             }
+
+            // Create a data array for this value.
+            $elementData['private'] = $isPrivateElement;
+            $elementData['value'] = self::decode($elementText['text']);
+
+            // Associate the element data array with the element name. If an element has multiple values,
+            // each value will be attached as its own data array. For example, if the Subject element has
+            // three values, there will be one 'Subject' entry in the $elementNameValuePairs array, but
+            // that entry will have three data arrays.
+            $elementNameValuePairs[$name][] = $elementData;
         }
 
         $this->emitElementNameValuePairs($elementNameValuePairs, $leftColumnWidth);
