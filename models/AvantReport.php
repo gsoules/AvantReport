@@ -310,8 +310,7 @@ class AvantReport
             $title = $this->getTitle($elementNameValuePairs);
             $this->pdf->SetFont('Arial', 'B', 8);
             $this->pdf->SetTextColor(64, 64, 64);
-            $this->pdf->MultiCell(0, 0.18, "$title", self::BORDER, 'L');
-            $this->pdf->Ln(0.2);
+            $this->pdf->MultiCell(0, 0.2, "$title", self::BORDER, 'L');
 
             // Emit the item's thumbnail image.
             $imageTop = $this->pdf->GetY();
