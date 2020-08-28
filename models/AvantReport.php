@@ -215,58 +215,57 @@ class AvantReport
         // Push the table row a little to the right so that the table's left border aligns with the page header.
         $indent = 0.05;
 
+        // Set the widths of the report's columns.
         $layoutColumns = $searchResults->getLayoutsData()[$layoutId]['columns'];
-
-        $widths = array();
-        $availableWidth = 9.5 - ($indent * 2);
-        $skippedColumns = array();
-        $columnCount = count($layoutColumns);
-        $columnIndex = 0;
-        foreach ($layoutColumns as $layoutColumnName)
-        {
-            $columnIndex += 1;
-
-            if ($availableWidth <= 0)
-            {
-                $skippedColumns[] = $layoutColumnName;
-                continue;
-            }
-
-            if ($layoutColumnName == 'Identifier')
-                $width = 0.6;
-            elseif ($layoutColumnName == 'Title' || $layoutColumnName == 'Description')
-                $width = $columnCount > 5 ? 1.75 : 4.0;
-            else
-                $width = $columnCount > 6 ? 1.25 : 2.0;
-
-            if ($columnIndex == $columnCount)
-            {
-                // Give the last column all of the remaining space.
-                $width = $availableWidth;
-            }
-            else
-            {
-                if ($availableWidth - $width < 0)
-                    $width = $availableWidth;
-                $availableWidth -= $width;
-            }
-
-            $widths[] = $width;
-        }
-        $this->pdf->SetWidths($widths);
+        $skippedColumns = $this->setReportColumnWidths($indent, $layoutColumns, $searchResults->sharedSearchingEnabled());
 
         $rows = array();
         $headerRow = array();
 
+        $avantElasticsearch = new AvantElasticsearch();
+        $sharedSearchingEnabled = $searchResults->sharedSearchingEnabled();
+
+        // Create an array containing all of the result's element values.
         foreach ($results as $index => $result)
         {
-            $item = $this->getItem($useElasticsearch, $result);
+            $elementValues = array();
 
-            $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
+            if ($useElasticsearch)
+            {
+                $source = $result["_source"];
+                foreach ($source['core-fields'] as $name => $corefield)
+                {
+                    foreach ($corefield as $value)
+                    {
+                        if ($name == 'identifier' && $sharedSearchingEnabled)
+                        {
+                            $value = $source["item"]["contributor-id"] . "-$value";
+                        }
+                        $elementValues[] = array('name' => $name, 'value' => self::decode($value));
+                    }
+                }
+                foreach ($source['local-fields'] as $name => $localfield)
+                {
+                    foreach ($localfield as $value)
+                    {
+                        $elementValues[] = array('name' => $name, 'value' => self::decode($value));
+                    }
+                }
+            }
+            else
+            {
+                $item = $result;
+                $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
+                foreach ($elementTexts as $elementText)
+                {
+                    $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
+                    $elementValues[] = array('name' => $name, 'value' => self::decode($elementText['text']));
+                }
+            }
 
-            // Loop over each element column. Note that this logic does not need to check for and excluded private
-            // elements, because a user has to be logged in to choose a layout that contains private elements.
-            $row = array();
+            // Loop over each element column. Note that this logic does not need to check for and exclude private
+            // elements because a user has to be logged in to choose a layout that contains private elements.
+            $cells = array();
 
             foreach ($layoutColumns as $columnName)
             {
@@ -276,28 +275,44 @@ class AvantReport
                 if ($index == 0)
                     $headerRow[] = $columnName;
 
-                $row[$columnName] = '';
+                $cells[$columnName] = '';
 
-                foreach ($elementTexts as $count => $elementText)
+                foreach ($elementValues as $elementValue)
                 {
-                    $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
-                    if ($name != $columnName)
-                        continue;
+                    $name = $elementValue['name'];
 
-                    $text = self::decode($elementText['text']);
-                    if (!empty($row[$columnName]))
-                        $row[$columnName] .= PHP_EOL;
-                    $row[$columnName] .= $text;
+                    // Skip any elements that are not in the layout.
+                    if ($useElasticsearch)
+                    {
+                        $fieldName = $avantElasticsearch->convertElementNameToElasticsearchFieldName($columnName);
+                        if ($name != $fieldName)
+                            continue;
+                    }
+                    else
+                    {
+                        if ($name != $columnName)
+                            continue;
+                    }
+
+                    // Add the element's value(s) to the cell.
+                    $value = $elementValue['value'];
+                    if (!empty($cells[$columnName]))
+                    {
+                        // Use EOL to separate mulitple values for the same element.
+                        $cells[$columnName] .= PHP_EOL;
+                    }
+                    $cells[$columnName] .= $value;
                 }
             }
 
-            $data = array();
-            foreach($row as $cell)
-                $data[] = $cell;
-            $rows[] = $data;
+            // Create a report row for each result.
+            $row = array();
+            foreach ($cells as $cell)
+                $row[] = $cell;
+            $rows[] = $row;
         }
 
-        foreach ($rows as $index => $row)
+        foreach ($rows as $index => $cells)
         {
             if ($index == 0)
             {
@@ -306,7 +321,7 @@ class AvantReport
             }
 
             // Emit the result row.
-            $this->pdf->Row($row, $indent, $headerRow);
+            $this->pdf->Row($cells, $indent, $headerRow);
         }
     }
 
@@ -333,13 +348,29 @@ class AvantReport
             }
 
             // Get the item and its title.
-            $item = $this->getItem($useElasticsearch, $result);
-            $title = self::decode(ItemMetadata::getItemTitle($item));
+            if ($useElasticsearch)
+            {
+                $item = ItemMetadata::getItemFromId($result['_source']['item']['id']);
+                $titles = $result['_source']['core-fields']['title'];
+            }
+            else
+            {
+                $item = $result;
+                $titles = ItemMetadata::getAllElementTextsForElementName($item, 'Title');
+            }
+
+            $title = '';
+            foreach ($titles as $index => $titleText)
+            {
+                if ($index != 0)
+                    $title .= PHP_EOL;
+                $title .= $titleText;
+            }
 
             // Emit the title
             $this->pdf->SetFont('Arial', 'B', 8);
             $this->pdf->SetTextColor(64, 64, 64);
-            $this->pdf->Cell(0, 0.18, "$title", self::BORDER, 0, '');
+            $this->pdf->MultiCell(0, 0.18, "$title", self::BORDER, 'L');
             $this->pdf->Ln(0.2);
 
             // Emit the item's thumbnail image.
@@ -426,19 +457,6 @@ class AvantReport
         return $filterText;
     }
 
-    protected function getItem($useElasticsearch, $result)
-    {
-        if ($useElasticsearch)
-        {
-            $item = ItemMetadata::getItemFromId($result['_source']['item']['id']);
-        }
-        else
-        {
-            $item = $result;
-        }
-        return $item;
-    }
-
     protected function initializeReport($orientation, $item = null)
     {
         $this->pdf = new FPDFExtended($orientation, 'in', 'letter');
@@ -471,5 +489,55 @@ class AvantReport
         // Emit a line, followed by spacing, under the header.
         $this->emitLine($orientation, 1.1);
         $this->pdf->Ln(0.5);
+    }
+
+    protected function setReportColumnWidths($indent, $layoutColumns, $sharedSearchingEnabled)
+    {
+        $widths = array();
+        $availableWidth = 9.5 - ($indent * 2);
+        $skippedColumns = array();
+        $columnCount = count($layoutColumns);
+        $columnIndex = 0;
+        foreach ($layoutColumns as $layoutColumnName)
+        {
+            $columnIndex += 1;
+
+            if ($availableWidth <= 0)
+            {
+                $skippedColumns[] = $layoutColumnName;
+                continue;
+            }
+
+            if ($layoutColumnName == 'Identifier')
+            {
+                $width = $sharedSearchingEnabled ? 0.8 : 0.6;
+            }
+            elseif ($layoutColumnName == 'Title' || $layoutColumnName == 'Description')
+            {
+                $width = $columnCount > 5 ? 1.75 : 4.0;
+            }
+            else
+            {
+                $width = $columnCount > 6 ? 1.25 : 2.0;
+            }
+
+            if ($columnIndex == $columnCount)
+            {
+                // Give the last column all of the remaining space.
+                $width = $availableWidth;
+            }
+            else
+            {
+                if ($availableWidth - $width < 0)
+                {
+                    $width = $availableWidth;
+                }
+                $availableWidth -= $width;
+            }
+
+            $widths[] = $width;
+        }
+        $this->pdf->SetWidths($widths);
+        return $skippedColumns;
     }
 }
