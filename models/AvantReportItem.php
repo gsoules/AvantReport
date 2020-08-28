@@ -5,6 +5,7 @@ class AvantReportItem
     protected $detailLayoutElementNames;
     protected $elementNameValuePairs;
     protected $itemId;
+    protected $thumbnailUrl;
     protected $privateElementNames;
     protected $skipPrivateElements;
 
@@ -41,6 +42,7 @@ class AvantReportItem
         $avantElasticsearch = new AvantElasticsearch();
         $source = $result["_source"];
         $this->itemId = $source['item']['id'];
+        $this->thumbnailUrl = isset($source['url']['thumb']) ? $source['url']['thumb'] : '';
 
         foreach ($this->detailLayoutElementNames as $elementName)
         {
@@ -65,7 +67,7 @@ class AvantReportItem
                 break;
             }
 
-            if (!$found)
+            if (!$found && isset($source['local-fields']))
             {
                 foreach ($source['local-fields'] as $name => $localField)
                 {
@@ -82,7 +84,7 @@ class AvantReportItem
                 }
             }
 
-            if (!$found)
+            if (!$found && isset($source['private-fields']))
             {
                 foreach ($source['private-fields'] as $name => $privateField)
                 {
@@ -127,6 +129,11 @@ class AvantReportItem
             // that entry will have three data arrays.
             $this->elementNameValuePairs[$name][] = $elementData;
         }
+    }
+
+    public function getThumbnailUrl()
+    {
+        return $this->thumbnailUrl;
     }
 
     public function itemId()

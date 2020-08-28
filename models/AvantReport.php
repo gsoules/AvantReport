@@ -262,9 +262,9 @@ class AvantReport
             $rows[] = $row;
         }
 
+        $headerRow = array();
         foreach ($rows as $index => $cells)
         {
-            $headerRow = array();
             if ($index == 0)
             {
                 // Emit the header row.
@@ -310,39 +310,36 @@ class AvantReport
             $hasImage = false;
             $imageTop = $this->pdf->GetY();
             $itemFiles = null;
-            //$itemFiles = $item->Files;
-//            if (!$itemFiles)
-//            {
-//                $coverImageIdentifier = ItemPreview::getCoverImageIdentifier($item->id);
-//                $coverImageItem = empty($coverImageIdentifier) ? null : ItemMetadata::getItemFromIdentifier($coverImageIdentifier);
-//                $itemFiles = $coverImageItem ? $coverImageItem->Files : null;
-//            }
 
-            if ($itemFiles)
+            $thumbnailUrl = $reportItem->getThumbnailUrl();
+            $hasImage = !empty($thumbnailUrl);
+
+            if ($hasImage)
             {
-                // The item has an attachment.
-                foreach ($itemFiles as $itemFile)
+                $imageSize = getimagesize($thumbnailUrl);
+                if ($imageSize)
                 {
-                    if ($itemFile['mime_type'] == 'image/jpeg')
-                    {
-                        // Emit the image.
-                        $hasImage = true;
-                        $imageFileName = FILES_DIR . '/thumbnails/' . $itemFile['filename'];
-                        $y = $this->pdf->GetY();
-                        $this->pdf->Image($imageFileName, 0.8, $y + 0.05, null, 1.0);
-                        $imageBottom = $this->pdf->GetY();
-                        $imagePageNo = $this->pdf->PageNo();
-                        $this->pdf->SetY($imageTop);
-                        break;
-                    }
+                    $w = $imageSize[0];
+                    $h = $imageSize[1];
+                    $maxImageHeight = $w / $h > 2 ? 1.0 : 1.50;
+                    $y = $this->pdf->GetY();
+                    $this->pdf->Image($thumbnailUrl, 0.8, $y + 0.05, null, $maxImageHeight);
+                    $imageBottom = $y + $maxImageHeight;
+                    $imagePageNo = $this->pdf->PageNo();
+                    $this->pdf->SetY($imageTop);
+                }
+                else
+                {
+                    $hasImage = false;
                 }
             }
 
             // Emit the item's element names and values.
-            $this->emitItemElements($reportItem, 3.0);
+            $this->emitItemElements($reportItem, 3.5);
 
             // If the metadata did not display below the image on the same page, move Y to below the image.
-            if ($hasImage && $this->pdf->GetY() < $imageBottom && $imagePageNo == $this->pdf->PageNo())
+            $y = $this->pdf->GetY();
+            if ($hasImage && $y < $imageBottom && $imagePageNo == $this->pdf->PageNo())
             {
                 $this->pdf->SetY($imageBottom);
             }
