@@ -9,6 +9,7 @@ class AvantReport
     protected $pdf;
     protected $privateElementsData = array();
     protected $reportItems = array();
+    protected $skippedColumns = array();
     protected $skipPrivateElements;
 
     function __construct()
@@ -47,7 +48,15 @@ class AvantReport
         $title = $this->getTitle($reportItem->getElementNameValuePairs());
         $this->pdf->SetFont('Arial','B',10);
         $this->pdf->MultiCell(0, 0.2, self::decode($title), self::BORDER);
-        $this->pdf->Ln(0.4);
+        $this->pdf->Ln(0.2);
+
+        // Emit the item's image if it has one.
+        $imageUrl = ItemPreview::getImageUrl($item, false, false);
+        if ($imageUrl)
+        {
+            $this->pdf->Image($imageUrl, 0.8, null, 3.5, null);
+            $this->pdf->Ln(0.2);
+        }
 
         // Determine if the item has an attachment.
         $itemFiles = $item->Files;
@@ -55,22 +64,17 @@ class AvantReport
         {
             // The item has an attachment.
             $primaryImage = $itemFiles[0];
-            if ($primaryImage['mime_type'] == 'image/jpeg')
+            if (strpos($primaryImage['mime_type'], 'pdf') !== false)
             {
-                // Emit the image.
-                $imageFileName = FILES_DIR . '/fullsize/' . $primaryImage['filename'];
-                $this->pdf->Image($imageFileName);
-            }
-            else
-            {
-                // The attachment is not an image. Just emit its file name.
-                $this->pdf->Cell(1.0, 0.2, "Attachment:", self::BORDER, 0, 'R');
+                // The attachment is a PDF. Emit its file name.
+                $this->pdf->SetFont('Arial', '', 10);
+                $this->pdf->Cell(1.0, 0.2, "PDF:", self::BORDER, 0, 'R');
                 $this->pdf->SetFont('Arial', 'U', 10);
                 $attachmentUrl = WEB_DIR . '/files/original/' . $primaryImage['filename'];
                 $this->pdf->AddLink();
                 $this->pdf->Cell(0, 0.2, $attachmentUrl, self::BORDER);
+                $this->pdf->Ln(0.3);
             }
-            $this->pdf->Ln(0.4);
         }
 
         // Get the item's elements.
@@ -199,11 +203,11 @@ class AvantReport
 
         // Set the widths of the report's columns.
         $layoutColumns = $searchResults->getLayoutsData()[$layoutId]['columns'];
-        $skippedColumns = $this->setReportColumnWidths($indent, $layoutColumns, $searchResults->sharedSearchingEnabled());
+        $this->setReportColumnWidths($indent, $layoutColumns, $searchResults->sharedSearchingEnabled());
 
         $rows = array();
 
-        $avantElasticsearch = new AvantElasticsearch();
+        $avantElasticsearch = $useElasticsearch ? new AvantElasticsearch() : null;
 
         // Create an array containing all of the result's element values.
         foreach ($this->reportItems as $reportItem)
@@ -216,7 +220,7 @@ class AvantReport
 
             foreach ($layoutColumns as $columnName)
             {
-                if (in_array($columnName, $skippedColumns))
+                if (in_array($columnName, $this->skippedColumns))
                     continue;
 
                 $cells[$columnName] = '';
@@ -269,7 +273,10 @@ class AvantReport
             {
                 // Emit the header row.
                 foreach ($layoutColumns as $columnName)
-                    $headerRow[] = $columnName;
+                {
+                    if (!in_array($columnName, $this->skippedColumns))
+                        $headerRow[] = $columnName;
+                }
                 $this->pdf->Row($headerRow, $indent, null);
             }
 
@@ -307,10 +314,7 @@ class AvantReport
             $this->pdf->Ln(0.2);
 
             // Emit the item's thumbnail image.
-            $hasImage = false;
             $imageTop = $this->pdf->GetY();
-            $itemFiles = null;
-
             $thumbnailUrl = $reportItem->getThumbnailUrl();
             $hasImage = !empty($thumbnailUrl);
 
@@ -441,7 +445,6 @@ class AvantReport
     {
         $widths = array();
         $availableWidth = 9.5 - ($indent * 2);
-        $skippedColumns = array();
         $columnCount = count($layoutColumns);
         $columnIndex = 0;
         foreach ($layoutColumns as $layoutColumnName)
@@ -450,7 +453,7 @@ class AvantReport
 
             if ($availableWidth <= 0)
             {
-                $skippedColumns[] = $layoutColumnName;
+                $this->skippedColumns[] = $layoutColumnName;
                 continue;
             }
 
@@ -484,6 +487,5 @@ class AvantReport
             $widths[] = $width;
         }
         $this->pdf->SetWidths($widths);
-        return $skippedColumns;
     }
 }

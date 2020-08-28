@@ -41,7 +41,6 @@ class AvantReportItem
     {
         $avantElasticsearch = new AvantElasticsearch();
         $source = $result["_source"];
-        $this->itemId = $source['item']['id'];
         $this->thumbnailUrl = isset($source['url']['thumb']) ? $source['url']['thumb'] : '';
 
         foreach ($this->detailLayoutElementNames as $elementName)
@@ -105,8 +104,8 @@ class AvantReportItem
     protected function getOmekaValues($item)
     {
         // Get each of this item's element values and attach it to it's element name in the pairs array.
-        $this->itemId = $item->id;
         $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
+        $this->thumbnailUrl = ItemPreview::getImageUrl($item, true, true);;
 
         foreach ($elementTexts as $elementText)
         {
@@ -120,8 +119,9 @@ class AvantReportItem
             }
 
             // Create a data array for this value.
-            $elementData['private'] = $isPrivateElement;
+            $elementData['name'] = $name;
             $elementData['value'] = AvantReport::decode($elementText['text']);
+            $elementData['private'] = $isPrivateElement;
 
             // Associate the element data array with the element name. If an element has multiple values,
             // each value will be attached as its own data array. For example, if the Subject element has
@@ -134,10 +134,5 @@ class AvantReportItem
     public function getThumbnailUrl()
     {
         return $this->thumbnailUrl;
-    }
-
-    public function itemId()
-    {
-        return $this->itemId;
     }
 }
