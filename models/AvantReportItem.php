@@ -4,6 +4,7 @@ class AvantReportItem
 {
     protected $detailLayoutElementNames;
     protected $elementNameValuePairs;
+    protected $itemId;
     protected $privateElementNames;
     protected $skipPrivateElements;
 
@@ -25,6 +26,11 @@ class AvantReportItem
             $this->getElasticsearchValues($itemData, $sharedSearchEnabled);
     }
 
+    protected function createPair($name, $value, $private = false)
+    {
+        return array('name' => $name, 'value' => AvantReport::decode($value), 'private' => $private);
+    }
+
     public function getElementNameValuePairs()
     {
         return $this->elementNameValuePairs;
@@ -34,6 +40,7 @@ class AvantReportItem
     {
         $avantElasticsearch = new AvantElasticsearch();
         $source = $result["_source"];
+        $this->itemId = $source['item']['id'];
 
         foreach ($this->detailLayoutElementNames as $elementName)
         {
@@ -51,7 +58,7 @@ class AvantReportItem
                     {
                         $value = $source["item"]["contributor-id"] . "-$value";
                     }
-                    $this->elementNameValuePairs[$elementName][] = array('name' => $name, 'value' => AvantReport::decode($value));
+                    $this->elementNameValuePairs[$elementName][] = $this->createPair($name, $value);
                 }
 
                 $found = true;
@@ -67,7 +74,7 @@ class AvantReportItem
 
                     foreach ($localField as $value)
                     {
-                        $this->elementNameValuePairs[$elementName][] = array('name' => $name, 'value' => AvantReport::decode($value));
+                        $this->elementNameValuePairs[$elementName][] = $this->createPair($name, $value);
                     }
 
                     $found = true;
@@ -84,7 +91,7 @@ class AvantReportItem
 
                     foreach ($privateField as $value)
                     {
-                        $this->elementNameValuePairs[$elementName][] = array('name' => $name, 'value' => AvantReport::decode($value));
+                        $this->elementNameValuePairs[$elementName][] = $this->createPair($name, $value, true);
                     }
 
                     break;
@@ -96,6 +103,7 @@ class AvantReportItem
     protected function getOmekaValues($item)
     {
         // Get each of this item's element values and attach it to it's element name in the pairs array.
+        $this->itemId = $item->id;
         $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
 
         foreach ($elementTexts as $elementText)
@@ -119,5 +127,10 @@ class AvantReportItem
             // that entry will have three data arrays.
             $this->elementNameValuePairs[$name][] = $elementData;
         }
+    }
+
+    public function itemId()
+    {
+        return $this->itemId;
     }
 }

@@ -38,14 +38,15 @@ class AvantReport
 
     public function createReportForItem($item)
     {
-        $this->reportItems[] = new AvantReportItem($item, $this->detailLayoutElementNames, $this->privateElementsData);
+        $reportItem = new AvantReportItem($item, $this->detailLayoutElementNames, $this->privateElementsData);
+        $this->reportItems[] = $reportItem;
 
         $this->initializeReport('P', $item);
 
         // Emit the item title.
-        $this->pdf->SetFont('Arial','B',13);
-        $title = ItemMetadata::getItemTitle($item);
-        $this->pdf->Cell(0, 0.2, self::decode($title), self::BORDER);
+        $title = $this->getTitle($reportItem->getElementNameValuePairs());
+        $this->pdf->SetFont('Arial','B',10);
+        $this->pdf->MultiCell(0, 0.2, self::decode($title), self::BORDER);
         $this->pdf->Ln(0.4);
 
         // Determine if the item has an attachment.
@@ -73,7 +74,7 @@ class AvantReport
         }
 
         // Get the item's elements.
-        $this->emitItemElements($item);
+        $this->emitItemElements($reportItem);
 
         // Prompt the user to save the file.
         $this->downloadReport(__('item-') . ItemMetadata::getItemIdentifier($item));
@@ -104,7 +105,7 @@ class AvantReport
 
         // Emit the result rows.
         if ($searchResults->getSelectedLayoutId() == 1)
-            $this->emitRowsForDetailLayout($searchResults);
+            $this->emitRowsForDetailLayout();
         else
             $this->emitRowsForCompressedLayout($searchResults);
 
@@ -176,37 +177,9 @@ class AvantReport
         }
     }
 
-    protected function emitItemElements($item, $leftColumnWidth = 1.0)
+    protected function emitItemElements($reportItem, $leftColumnWidth = 1.0)
     {
-        // Create an array of element names in the order in which they appear on a public item view page.
-        $elementNameValuePairs = array();
-        foreach ($this->detailLayoutElementNames as $name)
-            $elementNameValuePairs[$name] = null;
-
-        // Get each of this item's element values and attach it to it's element name in the pairs array.
-        $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
-        foreach ($elementTexts as $elementText)
-        {
-            $name = ItemMetadata::getElementNameFromId($elementText['element_id']);
-
-            // Skip private elements if no user is logged in.
-            $isPrivateElement = in_array($name, $this->privateElementsData);
-            if ($isPrivateElement && $this->skipPrivateElements)
-            {
-                continue;
-            }
-
-            // Create a data array for this value.
-            $elementData['private'] = $isPrivateElement;
-            $elementData['value'] = self::decode($elementText['text']);
-
-            // Associate the element data array with the element name. If an element has multiple values,
-            // each value will be attached as its own data array. For example, if the Subject element has
-            // three values, there will be one 'Subject' entry in the $elementNameValuePairs array, but
-            // that entry will have three data arrays.
-            $elementNameValuePairs[$name][] = $elementData;
-        }
-
+        $elementNameValuePairs = $reportItem->getElementNameValuePairs();
         $this->emitElementNameValuePairs($elementNameValuePairs, $leftColumnWidth);
     }
 
@@ -219,7 +192,6 @@ class AvantReport
     protected function emitRowsForCompressedLayout($searchResults)
     {
         $useElasticsearch = $searchResults->useElasticsearch();
-        $results = $searchResults->getResults();
         $layoutId = $searchResults->getSelectedLayoutId();
 
         // Push the table row a little to the right so that the table's left border aligns with the page header.
@@ -230,13 +202,11 @@ class AvantReport
         $skippedColumns = $this->setReportColumnWidths($indent, $layoutColumns, $searchResults->sharedSearchingEnabled());
 
         $rows = array();
-        $headerRow = array();
 
         $avantElasticsearch = new AvantElasticsearch();
-        $sharedSearchingEnabled = $searchResults->sharedSearchingEnabled();
 
         // Create an array containing all of the result's element values.
-        foreach ($this->reportItems as $index => $reportItem)
+        foreach ($this->reportItems as $reportItem)
         {
             $elementNameValuePairs = $reportItem->getElementNameValuePairs();
 
@@ -248,9 +218,6 @@ class AvantReport
             {
                 if (in_array($columnName, $skippedColumns))
                     continue;
-
-                if ($index == 0)
-                    $headerRow[] = $columnName;
 
                 $cells[$columnName] = '';
 
@@ -297,9 +264,12 @@ class AvantReport
 
         foreach ($rows as $index => $cells)
         {
+            $headerRow = array();
             if ($index == 0)
             {
                 // Emit the header row.
+                foreach ($layoutColumns as $columnName)
+                    $headerRow[] = $columnName;
                 $this->pdf->Row($headerRow, $indent, null);
             }
 
@@ -308,13 +278,12 @@ class AvantReport
         }
     }
 
-    protected function emitRowsForDetailLayout($searchResults)
+    protected function emitRowsForDetailLayout()
     {
-        $useElasticsearch = $searchResults->useElasticsearch();
-        $results = $searchResults->getResults();
-
-        foreach ($results as  $result)
+        foreach ($this->reportItems as $reportItem)
         {
+            $elementNameValuePairs = $reportItem->getElementNameValuePairs();
+
             // Determine if the next row needs to start on a new page.
             if ($this->pdf->GetY() > 8.5)
             {
@@ -330,27 +299,8 @@ class AvantReport
                 $this->pdf->Ln(0.1);
             }
 
-            // Get the item and its title.
-            if ($useElasticsearch)
-            {
-                $item = ItemMetadata::getItemFromId($result['_source']['item']['id']);
-                $titles = $result['_source']['core-fields']['title'];
-            }
-            else
-            {
-                $item = $result;
-                $titles = ItemMetadata::getAllElementTextsForElementName($item, 'Title');
-            }
-
-            $title = '';
-            foreach ($titles as $index => $titleText)
-            {
-                if ($index != 0)
-                    $title .= PHP_EOL;
-                $title .= $titleText;
-            }
-
             // Emit the title
+            $title = $this->getTitle($elementNameValuePairs);
             $this->pdf->SetFont('Arial', 'B', 8);
             $this->pdf->SetTextColor(64, 64, 64);
             $this->pdf->MultiCell(0, 0.18, "$title", self::BORDER, 'L');
@@ -359,13 +309,14 @@ class AvantReport
             // Emit the item's thumbnail image.
             $hasImage = false;
             $imageTop = $this->pdf->GetY();
-            $itemFiles = $item->Files;
-            if (!$itemFiles)
-            {
-                $coverImageIdentifier = ItemPreview::getCoverImageIdentifier($item->id);
-                $coverImageItem = empty($coverImageIdentifier) ? null : ItemMetadata::getItemFromIdentifier($coverImageIdentifier);
-                $itemFiles = $coverImageItem ? $coverImageItem->Files : null;
-            }
+            $itemFiles = null;
+            //$itemFiles = $item->Files;
+//            if (!$itemFiles)
+//            {
+//                $coverImageIdentifier = ItemPreview::getCoverImageIdentifier($item->id);
+//                $coverImageItem = empty($coverImageIdentifier) ? null : ItemMetadata::getItemFromIdentifier($coverImageIdentifier);
+//                $itemFiles = $coverImageItem ? $coverImageItem->Files : null;
+//            }
 
             if ($itemFiles)
             {
@@ -388,7 +339,7 @@ class AvantReport
             }
 
             // Emit the item's element names and values.
-            $this->emitItemElements($item, 3.0);
+            $this->emitItemElements($reportItem, 3.0);
 
             // If the metadata did not display below the image on the same page, move Y to below the image.
             if ($hasImage && $this->pdf->GetY() < $imageBottom && $imagePageNo == $this->pdf->PageNo())
@@ -438,6 +389,21 @@ class AvantReport
             $filterText .= ", only items with images";
         }
         return $filterText;
+    }
+
+    protected function getTitle($elementNameValuePairs)
+    {
+        $title = '';
+        $titles = $elementNameValuePairs['Title'];
+        foreach ($titles as $index => $pair)
+        {
+            if ($index != 0)
+            {
+                $title .= PHP_EOL;
+            }
+            $title .= $pair['value'];
+        }
+        return $title;
     }
 
     protected function initializeReport($orientation, $item = null)
