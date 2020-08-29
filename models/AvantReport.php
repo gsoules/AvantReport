@@ -114,19 +114,32 @@ class AvantReport
             $this->emitRowsForCompressedLayout($searchResults);
 
         // Prompt the user to save the file.
-        $this->downloadReport('search-results');
+        return $this->downloadReport('search-results');
     }
 
     public static function decode($text)
     {
         $text = html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
-        return iconv('UTF-8', 'windows-1252', $text);
+        return iconv('UTF-8', 'ISO-8859-1//IGNORE', $text);
     }
 
     protected function downloadReport($name)
     {
+        // Include a cookie in the download headers that the client-side Javascript will look for to
+        // determine when the download has completed so that it can show/hide a downloading message.
+        setcookie("REPORT", time(), 0, '/');
+
+        // Initiate the download.
         $fileName = $name . '.pdf';
-        $this->pdf->Output($fileName, 'D');
+
+        try
+        {
+            $this->pdf->Output($fileName, 'D');
+        }
+        catch (Exception $e)
+        {
+            return $e->getMessage();
+        }
     }
 
     protected function emitElementNameValuePairs(array $elementNameValuePairs, $leftColumnWidth)
@@ -351,9 +364,13 @@ class AvantReport
 
     protected function getFilterText(SearchResultsTableView $searchResults)
     {
+        // Determine if this is an All Sites search.
+        $siteId = AvantCommon::queryStringArgOrCookie('site', 'SITE-ID', 0);
+        $site = $siteId == 1 ? "all sites" : "this site";
+
         // Get the search filters.
         $totalResults = $searchResults->getTotalResults();
-        $filterText = "$totalResults search results for: ";
+        $filterText = "$totalResults search results from $site for: ";
         $filters = $searchResults->emitSearchFiltersText();
         $parts = explode(PHP_EOL, $filters);
         foreach ($parts as $index => $part)
@@ -372,22 +389,40 @@ class AvantReport
         // Get the Sort and Items settings.
         $query = $searchResults->getQuery();
         $sortField = '';
+
         if (isset($query['sort']))
         {
             $sortField = $query['sort'];
         }
+
         $imagesOnly = false;
         if (isset($query['filter']))
         {
             $imagesOnly = $query['filter'] == '1';
         }
+
         if (empty($sortField))
-            $sortField = __('relevance');
+        {
+            $allowSortByRelevance = !empty(AvantCommon::queryStringArg('query')) || !empty(AvantCommon::queryStringArg('keywords'));
+            if ($allowSortByRelevance)
+            {
+                $sortField = AvantSearch::SORT_BY_RELEVANCE;
+            }
+            else
+            {
+                // Default to sort by modified date descending when no sort order specified and not allowed to sort by
+                // relevance. This causes the most recently modified items to appear first.
+                $sortField = AvantSearch::SORT_BY_MODIFIED;
+            }
+        }
+
+        // Combine the filter and sort by information.
         $filterText .= ", sorted by $sortField";
         if ($imagesOnly)
         {
             $filterText .= ", only items with images";
         }
+
         return $filterText;
     }
 

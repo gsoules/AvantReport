@@ -8,3 +8,15 @@
 #save-search-results-pdf-link {
     padding-left: 4px;
 }
+
+#report-downloading-message {
+    color: #2f99db;
+    font-weight: bold;
+    padding-left: 4px;
+}
+
+#report-error-message {
+    color: red;
+    font-weight: bold;
+    padding-left: 4px;
+}
