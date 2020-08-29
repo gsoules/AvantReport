@@ -5,6 +5,9 @@ class AvantReport
     // For development/debugging, set the border to 1 so you can see individual cells.
     const BORDER = 0;
 
+    // This limit is documented. If you change the value here, change it in digitalarchive.us docs as well.
+    const MAX_IMAGES_IN_DETAIL_LAYOUT = 1000;
+
     protected $detailLayoutElementNames = array();
     protected $pdf;
     protected $privateElementsData = array();
@@ -98,10 +101,10 @@ class AvantReport
         $this->initializeReport($layoutId == 1 ? 'P' : 'L');
 
         // Emit the search filters and selector bar options.
-        $this->pdf->SetFont('Arial', 'B', 9);
-        $filterText = $this->getFilterText($searchResults);
-        $this->pdf->Cell(0, 0.2, $filterText, self::BORDER, 0, '');
-        $this->pdf->Ln(0.3);
+        $this->pdf->SetFont('Arial', '', 9);
+        $filterText = $this->getFilterText($searchResults, $layoutId);
+        $this->pdf->MultiCell(0, 0.2, $filterText, self::BORDER, 'L');
+        $this->pdf->Ln(0.1);
 
         // Switch to the font that subsequent text will use.
         $this->pdf->SetTextColor(0, 0, 0);
@@ -109,7 +112,7 @@ class AvantReport
 
         // Emit the result rows.
         if ($searchResults->getSelectedLayoutId() == 1)
-            $this->emitRowsForDetailLayout();
+            $this->emitRowsForDetailLayout($searchResults);
         else
             $this->emitRowsForCompressedLayout($searchResults);
 
@@ -298,8 +301,10 @@ class AvantReport
         }
     }
 
-    protected function emitRowsForDetailLayout()
+    protected function emitRowsForDetailLayout($searchResults)
     {
+        $totalResults = $searchResults->getTotalResults();
+
         foreach ($this->reportItems as $reportItem)
         {
             $elementNameValuePairs = $reportItem->getElementNameValuePairs();
@@ -325,33 +330,47 @@ class AvantReport
             $this->pdf->SetTextColor(64, 64, 64);
             $this->pdf->MultiCell(0, 0.2, "$title", self::BORDER, 'L');
 
-            // Emit the item's thumbnail image.
-            $imageTop = $this->pdf->GetY();
-            $thumbnailUrl = $reportItem->getThumbnailUrl();
-            $hasImage = !empty($thumbnailUrl);
-
-            if ($hasImage)
+            if ($totalResults > self::MAX_IMAGES_IN_DETAIL_LAYOUT)
             {
-                $imageSize = getimagesize($thumbnailUrl);
-                if ($imageSize)
+                // Don't emit images in order to avoid running out of memory.
+                // There is a script (http://www.fpdf.org/?go=script&id=76) that will write pages to a file as they
+                // are finished and thus avoid memory limitations, but for now we use the in-memory approach.
+                $indent = 0.8;
+                $hasImage = false;
+            }
+            else
+            {
+                $indent = 3.5;
+
+                // Emit the item's thumbnail image.
+                $imageTop = $this->pdf->GetY();
+                $thumbnailUrl = $reportItem->getThumbnailUrl();
+                $hasImage = !empty($thumbnailUrl);
+
+                if ($hasImage)
                 {
-                    $w = $imageSize[0];
-                    $h = $imageSize[1];
-                    $maxImageHeight = $w / $h > 2 ? 1.0 : 1.50;
-                    $y = $this->pdf->GetY();
-                    $this->pdf->Image($thumbnailUrl, 0.8, $y + 0.05, null, $maxImageHeight);
-                    $imageBottom = $y + $maxImageHeight;
-                    $imagePageNo = $this->pdf->PageNo();
-                    $this->pdf->SetY($imageTop);
-                }
-                else
-                {
-                    $hasImage = false;
+                    $imageSize = getimagesize($thumbnailUrl);
+                    if ($imageSize)
+                    {
+                        $w = $imageSize[0];
+                        $h = $imageSize[1];
+                        $maxImageHeight = $w / $h > 2 ? 1.0 : 1.50;
+                        $maxImageHeight = $w / $h > 2 ? 1.0 : 1.00;
+                        $y = $this->pdf->GetY();
+                        $this->pdf->Image($thumbnailUrl, 0.8, $y + 0.05, null, $maxImageHeight);
+                        $imageBottom = $y + $maxImageHeight;
+                        $imagePageNo = $this->pdf->PageNo();
+                        $this->pdf->SetY($imageTop);
+                    }
+                    else
+                    {
+                        $hasImage = false;
+                    }
                 }
             }
 
             // Emit the item's element names and values.
-            $this->emitItemElements($reportItem, 3.5);
+            $this->emitItemElements($reportItem, $indent);
 
             // If the metadata did not display below the image on the same page, move Y to below the image.
             $y = $this->pdf->GetY();
@@ -362,27 +381,23 @@ class AvantReport
         }
     }
 
-    protected function getFilterText(SearchResultsTableView $searchResults)
+    protected function getFilterText(SearchResultsTableView $searchResults, $layoutId)
     {
         // Determine if this is an All Sites search.
         $siteId = AvantCommon::queryStringArgOrCookie('site', 'SITE-ID', 0);
-        $site = $siteId == 1 ? "all sites" : "this site";
+        $field = $layoutId == 1 ? 'field' : 'column';
+        $site = $siteId == 1 ? "all sites (contributor ID appears in Identifier $field)" : WEB_DIR;
 
         // Get the search filters.
-        $totalResults = $searchResults->getTotalResults();
-        $filterText = "$totalResults search results from $site for: ";
+        $filterText = '';
         $filters = $searchResults->emitSearchFiltersText();
         $parts = explode(PHP_EOL, $filters);
-        foreach ($parts as $index => $part)
+        foreach ($parts as $part)
         {
             if (empty($part))
-            {
                 continue;
-            }
-            if ($index > 0)
-            {
+            if ($filterText)
                 $filterText .= ', ';
-            }
             $filterText .= $part;
         }
 
@@ -416,12 +431,18 @@ class AvantReport
             }
         }
 
-        // Combine the filter and sort by information.
-        $filterText .= ", sorted by $sortField";
+        if ($filterText)
+            $filterText .= ', ';
+        $filterText .= "sorted by $sortField";
+
+
         if ($imagesOnly)
         {
             $filterText .= ", only items with images";
         }
+
+        $totalResults = $searchResults->getTotalResults();
+        $filterText = "$totalResults search results from $site" . PHP_EOL . "Filters: $filterText";
 
         return $filterText;
     }
@@ -430,13 +451,20 @@ class AvantReport
     {
         $title = '';
         $titles = $elementNameValuePairs['Title'];
-        foreach ($titles as $index => $pair)
+        if ($titles)
         {
-            if ($index != 0)
+            foreach ($titles as $index => $pair)
             {
-                $title .= PHP_EOL;
+                if ($index != 0)
+                {
+                    $title .= PHP_EOL;
+                }
+                $title .= $pair['value'];
             }
-            $title .= $pair['value'];
+        }
+        else
+        {
+            $title = __('[Untitled]');
         }
         return $title;
     }
