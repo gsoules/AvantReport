@@ -55,6 +55,12 @@ class AvantReport
 
         // Emit the item's image if it has one.
         $imageUrl = ItemPreview::getImageUrl($item, false, false);
+        if (!$imageUrl && plugin_is_active('AvantHybrid'))
+        {
+            $hybridImageRecords = AvantHybrid::getImageRecords($item->id);
+            if ($hybridImageRecords)
+                $imageUrl = AvantHybrid::getImageUrl(AvantHybrid::getFileName($hybridImageRecords[0]));
+        }
         if ($imageUrl)
         {
             $this->pdf->Image($imageUrl, 0.8, null, 3.5, null);
