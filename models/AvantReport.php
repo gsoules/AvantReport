@@ -59,7 +59,7 @@ class AvantReport
         {
             $hybridImageRecords = AvantHybrid::getImageRecords($item->id);
             if ($hybridImageRecords)
-                $imageUrl = AvantHybrid::getImageUrl(AvantHybrid::getFileName($hybridImageRecords[0]));
+                $imageUrl = AvantHybrid::getImageUrl($hybridImageRecords[0]);
         }
         if ($imageUrl)
         {
