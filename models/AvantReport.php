@@ -61,7 +61,8 @@ class AvantReport
             if ($hybridImageRecords)
                 $imageUrl = AvantHybrid::getImageUrl($hybridImageRecords[0]);
         }
-        if ($imageUrl)
+
+        if ($this->validImageUrl($imageUrl))
         {
             $this->pdf->Image($imageUrl, 0.8, null, 3.5, null);
             $this->pdf->Ln(0.2);
@@ -351,7 +352,7 @@ class AvantReport
                 // Emit the item's thumbnail image.
                 $imageTop = $this->pdf->GetY();
                 $thumbnailUrl = $reportItem->getThumbnailUrl();
-                $hasImage = !empty($thumbnailUrl);
+                $hasImage = !empty($thumbnailUrl) && $this->validImageUrl($thumbnailUrl);
 
                 if ($hasImage)
                 {
@@ -360,7 +361,6 @@ class AvantReport
                     {
                         $w = $imageSize[0];
                         $h = $imageSize[1];
-                        $maxImageHeight = $w / $h > 2 ? 1.0 : 1.50;
                         $maxImageHeight = $w / $h > 2 ? 1.0 : 1.00;
                         $y = $this->pdf->GetY();
                         $this->pdf->Image($thumbnailUrl, 0.8, $y + 0.05, null, $maxImageHeight);
@@ -555,5 +555,19 @@ class AvantReport
             $widths[] = $width;
         }
         $this->pdf->SetWidths($widths);
+    }
+
+    protected function validImageUrl($url)
+    {
+        if (!$url)
+            return false;
+
+        if (AvantCommon::isRemoteImageUrl($url))
+        {
+            // Verify that the remote image exists on the remote image server.
+            return AvantCommon::remoteImageExists($url);
+        }
+
+        return true;
     }
 }
