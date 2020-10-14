@@ -62,6 +62,9 @@ class AvantReport
                 $imageUrl = AvantHybrid::getImageUrl($hybridImageRecords[0]);
         }
 
+        // Replace any spaces in the file name to prevent PHP from getting an error.
+        $imageUrl = str_replace(' ', '%20', $imageUrl);
+
         if ($this->validImageUrl($imageUrl))
         {
             $this->pdf->Image($imageUrl, 0.8, null, 3.5, null);
