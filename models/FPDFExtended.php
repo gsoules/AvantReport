@@ -1,6 +1,6 @@
 <?php
 
-class FPDFExtended extends FPDF
+class FPDFExtended extends FPDFBase
 {
     function Footer()
     {
