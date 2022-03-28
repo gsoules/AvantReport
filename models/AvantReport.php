@@ -359,7 +359,8 @@ class AvantReport
 
                 if ($hasImage)
                 {
-                    $imageSize = getimagesize($thumbnailUrl);
+                    // Suppress the warning that getImageSize can throw for some hybrid item images.
+                    $imageSize = @getimagesize($thumbnailUrl);
                     if ($imageSize)
                     {
                         $w = $imageSize[0];
