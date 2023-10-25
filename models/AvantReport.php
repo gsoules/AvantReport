@@ -63,7 +63,8 @@ class AvantReport
         }
 
         // Replace any spaces in the file name to prevent PHP from getting an error.
-        $imageUrl = str_replace(' ', '%20', $imageUrl);
+        if ($imageUrl)
+            $imageUrl = str_replace(' ', '%20', $imageUrl);
 
         if ($this->validImageUrl($imageUrl))
         {
