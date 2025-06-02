@@ -53,22 +53,13 @@ class AvantReport
         $this->pdf->MultiCell(0, 0.2, self::decode($title), self::BORDER);
         $this->pdf->Ln(0.2);
 
-        // Emit the item's image if it has one.
-        $imageUrl = ItemPreview::getImageUrl($item, false, false);
-        if (!$imageUrl && plugin_is_active('AvantHybrid'))
+        // Emit the item's image if it has one. If the file is a PDF, use it's derivative image which is a jpg.
+        $file = $item->getFile(0);
+        if (!empty($file))
         {
-            $hybridImageRecords = AvantHybrid::getImageRecords($item->id);
-            if ($hybridImageRecords)
-                $imageUrl = AvantHybrid::getImageUrl($hybridImageRecords[0]);
-        }
-
-        // Replace any spaces in the file name to prevent PHP from getting an error.
-        if ($imageUrl)
-            $imageUrl = str_replace(' ', '%20', $imageUrl);
-
-        if ($this->validImageUrl($imageUrl))
-        {
-            $this->pdf->Image($imageUrl, 0.8, null, 3.5, null);
+            $fileName = $file->getDerivativeFilename();
+            $filePath = FILES_DIR . DIRECTORY_SEPARATOR . "fullsize" . DIRECTORY_SEPARATOR . $fileName;
+            $this->pdf->Image($filePath, 0.8, null, 3.5, null);
             $this->pdf->Ln(0.2);
         }
 
