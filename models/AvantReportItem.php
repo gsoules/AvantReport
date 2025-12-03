@@ -103,7 +103,7 @@ class AvantReportItem
 
     protected function getOmekaValues($item)
     {
-        // Get each of this item's element values and attach it to it's element name in the pairs array.
+        // Get each of this item's element values and attach it to its element name in the pairs array.
         $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
         $this->thumbnailUrl = ItemPreview::getImageUrl($item, true, true);;
 
@@ -118,9 +118,16 @@ class AvantReportItem
                 continue;
             }
 
+            $text = $elementText['text'];
+
+            if (plugin_is_active("MDIBL"))
+            {
+                $text = MDIBL::removeReferenceNumbers($text);
+            }
+
             // Create a data array for this value.
             $elementData['name'] = $name;
-            $elementData['value'] = AvantReport::decode($elementText['text']);
+            $elementData['value'] = AvantReport::decode($text);
             $elementData['private'] = $isPrivateElement;
 
             // Associate the element data array with the element name. If an element has multiple values,
