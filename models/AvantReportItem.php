@@ -105,7 +105,7 @@ class AvantReportItem
     {
         // Get each of this item's element values and attach it to its element name in the pairs array.
         $elementTexts = get_db()->getTable('ElementText')->findByRecord($item);
-        $this->thumbnailUrl = ItemPreview::getImageUrl($item, true, true);;
+        $this->thumbnailUrl = ItemPreview::getImageUrl($item, true, true);
 
         foreach ($elementTexts as $elementText)
         {
@@ -122,7 +122,24 @@ class AvantReportItem
 
             if (plugin_is_active("MDIBL"))
             {
-                $text = MDIBL::removeReferenceNumbers($text);
+                // Special handling for MDIBL author/school and species/common. Presentation of these data pairs is
+                // very plain in a PDF. Nicer formatting with wider columns, bolded primary names (author and species)
+                // with secondary names (school and common name) on a second line below the primary name, would require
+                // significant enhancements to this plugin.
+                $speciesElementId = ItemMetadata::getElementIdForElementName("Species");
+                $authorElementId = ItemMetadata::getElementIdForElementName("Author");
+                if ($elementText['element_id'] == $speciesElementId)
+                {
+                    // Show the species and its common name separated by a tilde.
+                    $speciesData = MDIBL::getSpeciesDataFromLookupTable($text);
+                    $text = MDIBL::speciesText($speciesData) . " ~ " . MDIBL::speciesCommonName($speciesData);
+                }
+                else if ($elementText['element_id'] == $authorElementId)
+                {
+                    // Show the author and their school separated by a tilde.
+                    [$author, $school] = MDIBL::combineAuthorAndInstitution($item, $authorElementId, $text, false);
+                    $text = "$author ~ $school";
+                }
             }
 
             // Create a data array for this value.
